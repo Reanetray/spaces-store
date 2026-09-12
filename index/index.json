@@ -1,11 +1,11 @@
 {
   "spaces": [
     {
-      "id": "demo-1",
-      "name": "Demo Space",
-      "description": "Test listing to verify the store shows up",
+      "id": "to-do",
+      "name": "To do",
+      "description": "AI tools, VPN tracker, and a history map",
       "category": "Dev",
-      "path": "spaces/demo-1",
+      "path": "spaces/to-do",
       "author": "Reanetray"
     }
   ]
