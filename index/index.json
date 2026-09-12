@@ -2,9 +2,9 @@
   "spaces": [
     {
       "id": "to-do",
-      "name": "To do",
+      "name": "First space for test",
       "description": "AI tools, VPN tracker, and a history map",
-      "category": "Dev",
+      "category": "Verified",
       "path": "spaces/to-do",
       "author": "Reanetray"
     }
