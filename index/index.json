@@ -3,7 +3,7 @@
     {
       "id": "to-do",
       "name": "First space for test",
-      "icon": "assets/icon.jpg",
+      "icon": "assets/icon.png",
       "description": "AI tools, VPN tracker, and a history map",
       "category": "Verified",
       "path": "spaces/to-do",
