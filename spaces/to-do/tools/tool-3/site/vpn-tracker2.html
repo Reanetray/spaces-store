@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VPN — учёт оплат</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --planned:#A78BFA;
+    --progress:#60A5FA;
+    --done:#4ADE9B;
+    --note:#F5C453;
+    --overdue:#F17C9C;
+
+    --bg:#0A0A11;
+    --text:#EDEBF5;
+    --text-soft:#9A96AE;
+    --text-faint:#6D6980;
+
+    --glass-bg: rgba(255,255,255,0.08);
+    --glass-bg-strong: rgba(255,255,255,0.13);
+    --glass-border: rgba(255,255,255,0.13);
+    --glass-border-strong: rgba(255,255,255,0.24);
+    --glass-blur: 22px;
+    --radius:16px;
+    --radius-sm:11px;
+
+    --ease-spring: cubic-bezier(.34,1.56,.64,1);
+    --ease-out: cubic-bezier(.16,1,.3,1);
+    --ease-soft: cubic-bezier(.4,0,.2,1);
+  }
+
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    font-family:'Manrope', system-ui, sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important; }
+  }
+
+  /* ---------- Ambient shimmering background ---------- */
+  .ambient{
+    position:fixed; inset:-10%; z-index:0; pointer-events:none;
+    filter:blur(90px); opacity:0;
+    animation: ambientIn 1.8s var(--ease-out) forwards .1s;
+  }
+  @keyframes ambientIn{ to{ opacity:0.55; } }
+  .ambient span{ position:absolute; border-radius:50%; will-change:transform; mix-blend-mode:screen; }
+  .ambient span:nth-child(1){
+    width:46vw; height:46vw; top:-8%; left:-6%;
+    background:radial-gradient(circle at 30% 30%, rgba(167,139,250,0.32), transparent 70%);
+    animation: drift1 26s ease-in-out infinite;
+  }
+  .ambient span:nth-child(2){
+    width:40vw; height:40vw; bottom:-10%; right:-8%;
+    background:radial-gradient(circle at 60% 60%, rgba(96,165,250,0.28), transparent 70%);
+    animation: drift2 30s ease-in-out infinite;
+  }
+  .ambient span:nth-child(3){
+    width:32vw; height:32vw; top:35%; left:55%;
+    background:radial-gradient(circle at 50% 50%, rgba(74,222,155,0.18), transparent 70%);
+    animation: drift3 24s ease-in-out infinite;
+  }
+  @keyframes drift1{ 0%,100%{transform:translate(0,0) scale(1);} 50%{transform:translate(6%,8%) scale(1.12);} }
+  @keyframes drift2{ 0%,100%{transform:translate(0,0) scale(1);} 50%{transform:translate(-7%,-5%) scale(1.08);} }
+  @keyframes drift3{ 0%,100%{transform:translate(-4%,3%) scale(1);} 50%{transform:translate(5%,-6%) scale(1.15);} }
+
+  :focus-visible{ outline:2px solid var(--progress); outline-offset:2px; }
+
+  /* ---------- Layout ---------- */
+  main{
+    position:relative; z-index:1;
+    max-width:920px; margin:0 auto;
+    padding:40px 24px 80px;
+  }
+  .topbar{
+    display:flex; align-items:flex-start; justify-content:space-between; gap:16px;
+    margin-bottom:28px; flex-wrap:wrap;
+    opacity:0; transform:translateY(10px);
+    animation:fadeUp .6s var(--ease-out) forwards .05s;
+  }
+  @keyframes fadeUp{ to{ opacity:1; transform:translateY(0); } }
+  .topbar h1{ margin:0 0 4px 0; font-size:24px; font-weight:800; letter-spacing:-.2px; }
+  .topbar .sub{ margin:0; font-size:13px; color:var(--text-soft); display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .due-chip{
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:11.5px; font-weight:700; padding:3px 10px; border-radius:999px;
+    border:1px solid currentColor;
+  }
+  .due-chip.ok{ color:var(--done); }
+  .due-chip.soon{ color:var(--note); }
+  .due-chip.late{ color:var(--overdue); }
+
+  .topbar-actions{ display:flex; gap:8px; flex-shrink:0; }
+  .btn{
+    font-family:inherit; font-size:12.5px; font-weight:700;
+    padding:9px 15px; border-radius:10px; border:none; cursor:pointer;
+    display:inline-flex; align-items:center; gap:7px;
+    transition:transform .2s var(--ease-spring), filter .2s var(--ease-soft), background .2s var(--ease-soft), color .2s var(--ease-soft);
+  }
+  .btn:hover{ filter:brightness(1.08); }
+  .btn:active{ transform:scale(.94); }
+  .btn svg{ width:14px; height:14px; flex-shrink:0; }
+  .btn-ghost{ background:var(--glass-bg-strong); border:1px solid var(--glass-border-strong); color:var(--text); }
+  .btn-ghost:hover{ background:rgba(255,255,255,0.16); }
+  .btn-primary{ background:var(--progress); color:#101018; }
+  .btn-cancel{ background:transparent; color:var(--text-soft); }
+  .btn-cancel:hover{ color:var(--text); }
+  .btn-save{ background:var(--progress); color:#101018; }
+
+  .icon-btn{
+    width:26px; height:26px; display:flex; align-items:center; justify-content:center;
+    border:none; background:transparent; color:var(--text-faint);
+    border-radius:7px; cursor:pointer; flex-shrink:0;
+    transition:background .2s var(--ease-soft), color .2s var(--ease-soft), transform .25s var(--ease-spring);
+  }
+  .icon-btn:hover{ background:rgba(255,255,255,0.09); color:var(--text); transform:scale(1.1); }
+  .icon-btn:active{ transform:scale(.9); }
+  .icon-btn svg{ width:14px; height:14px; }
+  .icon-btn.danger:hover{ color:var(--overdue); background:rgba(241,124,156,0.14); }
+
+  /* ---------- Glass card base ---------- */
+  .card{
+    background:var(--glass-bg);
+    border:1px solid var(--glass-border);
+    border-radius:var(--radius);
+    backdrop-filter:blur(var(--glass-blur));
+    -webkit-backdrop-filter:blur(var(--glass-blur));
+  }
+
+  /* ---------- Stats grid ---------- */
+  .stats{
+    display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:26px;
+    opacity:0; transform:translateY(10px);
+    animation:fadeUp .6s var(--ease-out) forwards .1s;
+  }
+  .stat-card{
+    padding:16px 18px; display:flex; flex-direction:column; gap:4px;
+    cursor:default;
+  }
+  .stat-card .stat-label{
+    font-size:11px; font-weight:700; letter-spacing:.3px; text-transform:uppercase;
+    color:var(--text-faint);
+  }
+  .stat-card .stat-value{ font-size:22px; font-weight:800; color:#fff; line-height:1.1; margin-top:2px; }
+  .stat-card .stat-value span{ font-size:13px; font-weight:700; color:var(--text-soft); }
+  .stat-card .stat-sub { font-size:11.5px; font-weight:600; color:var(--text-faint); margin-top:4px; line-height:1.3; }
+  .stat-card.editable{ cursor:pointer; transition:border-color .2s var(--ease-soft), background .2s var(--ease-soft); }
+  .stat-card.editable:hover{ border-color:var(--glass-border-strong); background:rgba(255,255,255,0.1); }
+
+  .progress-track{
+    margin-top:8px; height:6px; border-radius:99px; background:rgba(255,255,255,0.08); overflow:hidden;
+  }
+  .progress-fill{
+    height:100%; border-radius:99px; background:var(--done);
+    width:0%; transition:width .5s var(--ease-out);
+  }
+
+  /* ---------- Filter row ---------- */
+  .filter-row{
+    display:flex; align-items:center; gap:8px; margin-bottom:16px; flex-wrap:wrap;
+    opacity:0; transform:translateY(10px);
+    animation:fadeUp .6s var(--ease-out) forwards .15s;
+  }
+  .search-box{
+    flex:1; min-width:160px; display:flex; align-items:center; gap:8px;
+    background:var(--glass-bg); border:1px solid var(--glass-border); border-radius:var(--radius-sm);
+    padding:9px 12px;
+  }
+  .search-box svg{ width:14px; height:14px; color:var(--text-faint); flex-shrink:0; }
+  .search-box input{
+    border:none; outline:none; background:transparent; color:var(--text);
+    font-family:inherit; font-size:13px; font-weight:600; width:100%;
+  }
+  .search-box input::placeholder{ color:var(--text-faint); }
+  .filter-chips{ display:flex; gap:6px; }
+  .chip{
+    font-family:inherit; font-size:12px; font-weight:700; padding:8px 13px; border-radius:999px;
+    border:1px solid var(--glass-border); background:transparent; color:var(--text-soft); cursor:pointer;
+    transition:background .2s var(--ease-soft), color .2s var(--ease-soft), border-color .2s var(--ease-soft);
+  }
+  .chip:hover{ color:var(--text); border-color:var(--glass-border-strong); }
+  .chip.active{ background:var(--glass-bg-strong); color:#fff; border-color:var(--glass-border-strong); }
+
+  /* ---------- Add user ---------- */
+  .add-row{ margin-bottom:14px; }
+  .add-toggle{
+    width:100%; display:flex; align-items:center; gap:8px;
+    background:transparent; border:1.5px dashed var(--glass-border);
+    border-radius:var(--radius-sm); padding:12px 14px;
+    font-family:inherit; font-size:13px; font-weight:600; color:var(--text-faint);
+    cursor:pointer;
+    transition:border-color .25s var(--ease-soft), color .25s var(--ease-soft), transform .25s var(--ease-spring), background .25s var(--ease-soft);
+  }
+  .add-toggle:hover{ color:var(--text); border-color:var(--glass-border-strong); background:rgba(255,255,255,0.03); transform:translateY(-2px); }
+  .add-toggle:active{ transform:translateY(0) scale(.98); }
+  .add-toggle svg{ width:15px; height:15px; }
+
+  .add-form{
+    display:grid; grid-template-rows:0fr; opacity:0;
+    background:var(--glass-bg-strong);
+    border:1px solid var(--glass-border);
+    border-radius:var(--radius-sm);
+    backdrop-filter:blur(var(--glass-blur));
+    -webkit-backdrop-filter:blur(var(--glass-blur));
+    transition:grid-template-rows .4s var(--ease-out), opacity .3s var(--ease-soft);
+  }
+  .add-form.open{ grid-template-rows:1fr; opacity:1; }
+  .add-form-inner{ overflow:hidden; min-height:0; display:flex; flex-direction:column; gap:10px; padding:0 14px; }
+  .add-form.open .add-form-inner{ padding:14px; }
+  .add-form-fields{ display:flex; gap:8px; flex-wrap:wrap; }
+  .add-form input[type="text"]{
+    flex:1; min-width:140px;
+    border:1px solid var(--glass-border); outline:none; background:rgba(255,255,255,0.04);
+    font-family:inherit; font-size:13.5px; font-weight:600; color:var(--text);
+    padding:9px 12px; border-radius:9px;
+  }
+  .add-form input[type="text"]:focus{ border-color:var(--progress); }
+  .add-form select{
+    border:1px solid var(--glass-border); outline:none; background:rgba(255,255,255,0.04);
+    font-family:inherit; font-size:13px; font-weight:600; color:var(--text);
+    padding:9px 10px; border-radius:9px; cursor:pointer;
+  }
+  .add-form-hint{ font-size:11.5px; color:var(--text-faint); }
+  .add-form-actions{ display:flex; justify-content:flex-end; gap:8px; }
+
+  /* ---------- Users list ---------- */
+  .users-list{ display:flex; flex-direction:column; gap:10px; }
+  .user-row{
+    padding:14px 16px; display:flex; align-items:center; gap:14px;
+    border-left:3px solid var(--glass-border);
+    transition:border-color .3s var(--ease-soft), background .3s var(--ease-soft);
+  }
+  .user-row.is-paid{ border-left-color:var(--done); }
+  .user-row.is-unpaid{ border-left-color:var(--overdue); }
+  .user-avatar{
+    width:38px; height:38px; border-radius:50%; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    font-size:14px; font-weight:800; color:#101018;
+  }
+  .user-main{ flex:1; min-width:0; }
+  .user-name-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .user-name{ font-size:14.5px; font-weight:700; color:var(--text); }
+  .user-multiplier{
+    font-size:10.5px; font-weight:700; color:var(--text-faint);
+    border:1px solid var(--glass-border); border-radius:999px; padding:1px 7px;
+  }
+  .user-note{ font-size:12px; color:var(--text-faint); margin-top:2px; }
+  .user-history{ display:flex; gap:3px; margin-top:6px; }
+  .hist-dot{ width:6px; height:6px; border-radius:50%; background:rgba(255,255,255,0.12); }
+  .hist-dot.paid{ background:var(--done); }
+  .hist-dot.unpaid{ background:var(--overdue); }
+
+  .user-amount{ text-align:right; flex-shrink:0; min-width:76px; }
+  .user-amount .amt{ font-size:15px; font-weight:800; color:#fff; }
+  .user-amount .status-label{ font-size:11px; font-weight:700; }
+  .user-amount .status-label.paid{ color:var(--done); }
+  .user-amount .status-label.unpaid{ color:var(--overdue); }
+
+  .pay-toggle{
+    flex-shrink:0; width:38px; height:38px; border-radius:50%; border:1.5px solid var(--glass-border-strong);
+    background:transparent; color:var(--text-faint); cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition:background .2s var(--ease-soft), border-color .2s var(--ease-soft), color .2s var(--ease-soft), transform .2s var(--ease-spring);
+  }
+  .pay-toggle:hover{ transform:scale(1.08); }
+  .pay-toggle:active{ transform:scale(.92); }
+  .pay-toggle.paid{ background:var(--done); border-color:var(--done); color:#0d1f16; }
+  .pay-toggle svg{ width:16px; height:16px; }
+
+  .user-actions{ display:flex; gap:2px; flex-shrink:0; }
+
+  .empty-state{
+    padding:50px 20px; text-align:center; color:var(--text-faint);
+    opacity:0; animation:fadeUp .5s var(--ease-out) forwards .1s;
+  }
+  .empty-state svg{ width:34px; height:34px; margin-bottom:10px; opacity:.5; }
+  .empty-state p{ margin:0; font-size:13.5px; font-weight:600; }
+
+  /* ---------- Settings side panel ---------- */
+  .overlay{
+    position:fixed; inset:0; z-index:60;
+    background:rgba(5,5,10,0); backdrop-filter:blur(0px); -webkit-backdrop-filter:blur(0px);
+    pointer-events:none;
+    transition:background .4s var(--ease-soft), backdrop-filter .4s var(--ease-soft);
+  }
+  .overlay.open{
+    background:rgba(5,5,10,0.55); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+    pointer-events:auto;
+  }
+  .settings-panel{
+    position:absolute; top:0; right:0; bottom:0; width:min(92vw, 380px);
+    background:rgba(16,15,23,0.95);
+    border-left:1px solid var(--glass-border);
+    backdrop-filter:blur(28px) saturate(160%);
+    -webkit-backdrop-filter:blur(28px) saturate(160%);
+    padding:26px 24px; overflow-y:auto;
+    transform:translateX(100%);
+    transition:transform .4s var(--ease-out);
+    display:flex; flex-direction:column; gap:18px;
+  }
+  .overlay.open .settings-panel{ transform:translateX(0); }
+  .settings-panel h2{ margin:0 0 2px 0; font-size:17px; font-weight:800; color:#fff; }
+  .settings-panel .sub{ margin:0 0 6px 0; font-size:12.5px; color:var(--text-soft); }
+  .settings-close{ position:absolute; top:20px; right:20px; }
+  .field{ display:flex; flex-direction:column; gap:6px; }
+  .field label{ font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; color:var(--text-faint); }
+  .field input, .field select{
+    border:1px solid var(--glass-border); outline:none; background:rgba(255,255,255,0.05);
+    font-family:inherit; font-size:14px; font-weight:600; color:var(--text);
+    padding:10px 12px; border-radius:9px;
+  }
+  .field input:focus, .field select:focus{ border-color:var(--progress); }
+  .field-row{ display:flex; gap:10px; }
+  .field-row .field{ flex:1; }
+  .settings-note{
+    font-size:12.5px; color:var(--text-soft); line-height:1.5;
+    background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:10px; padding:12px;
+  }
+  .settings-note b{ color:var(--text); font-weight:700; }
+
+  /* ---------- Toast ---------- */
+  .toast{
+    position:fixed; left:50%; bottom:26px; z-index:90;
+    transform:translateX(-50%) translateY(20px); opacity:0; pointer-events:none;
+    background:rgba(24,22,34,0.96); border:1px solid var(--glass-border-strong);
+    backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+    padding:11px 20px; border-radius:999px; font-size:13px; font-weight:700; color:var(--text);
+    box-shadow:0 16px 40px rgba(0,0,0,0.5);
+    transition:opacity .3s var(--ease-out), transform .3s var(--ease-out);
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  @media (max-width: 640px){
+    main{ padding:24px 16px 60px; }
+    .stats{ grid-template-columns:repeat(2, 1fr); }
+    .topbar{ align-items:center; }
+    .topbar h1{ font-size:20px; }
+    .user-row{ flex-wrap:wrap; }
+    .user-amount{ order:3; margin-left:52px; text-align:left; }
+  }
+</style>
+</head>
+<body>
+
+<div class="ambient"><span></span><span></span><span></span></div>
+
+<main>
+  <div class="topbar">
+    <div>
+      <h1>VPN — учёт оплат</h1>
+      <p class="sub">
+        <span id="due-chip" class="due-chip ok"></span>
+        <span id="period-label-text"></span>
+      </p>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-ghost" id="new-period-btn" title="Начать новый период оплаты">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 1 2.6 6.3M3 21v-6h6"/></svg>
+        Новый период
+      </button>
+      <button class="btn btn-ghost" id="open-settings" title="Настройки оплаты">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+        Настройки
+      </button>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="card stat-card editable" id="stat-total" title="Изменить настройки">
+      <span class="stat-label">Аренда VPN</span>
+      <span class="stat-value" id="stat-total-value">—</span>
+      <span class="stat-sub" id="stat-total-sub">Расход на сервер</span>
+    </div>
+    <div class="card stat-card">
+      <span class="stat-label">Сбор с доли</span>
+      <span class="stat-value" id="stat-per-person">—</span>
+      <span class="stat-sub" id="stat-per-person-sub"></span>
+    </div>
+    <div class="card stat-card">
+      <span class="stat-label">Уже собрано</span>
+      <span class="stat-value" id="stat-collected">—</span>
+      <span class="stat-sub" id="stat-collected-sub"></span>
+      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+    </div>
+    <div class="card stat-card">
+      <span class="stat-label" id="stat-remaining-label">Не хватает</span>
+      <span class="stat-value" id="stat-remaining">—</span>
+      <span class="stat-sub" id="stat-remaining-sub"></span>
+    </div>
+  </div>
+
+  <div class="filter-row">
+    <div class="search-box">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input type="text" id="search-input" placeholder="Поиск по имени…">
+    </div>
+    <div class="filter-chips">
+      <button class="chip active" data-filter="all">Все</button>
+      <button class="chip" data-filter="unpaid">Не оплатили</button>
+      <button class="chip" data-filter="paid">Оплатили</button>
+    </div>
+  </div>
+
+  <div class="add-row">
+    <button class="add-toggle" id="add-toggle" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+      Добавить пользователя
+    </button>
+    <div class="add-form" id="add-form">
+      <div class="add-form-inner">
+        <div class="add-form-fields">
+          <input type="text" id="new-user-name" placeholder="Имя">
+          <select id="new-user-multiplier" title="Доля от полной цены">
+            <option value="0.5">×0.5 (полдоли)</option>
+            <option value="1" selected>×1 (обычная доля)</option>
+            <option value="1.5">×1.5</option>
+            <option value="2">×2 (двойная доля)</option>
+          </select>
+        </div>
+        <input type="text" id="new-user-note" placeholder="Заметка (необязательно) — например «брат»">
+        <div class="add-form-hint">Доля влияет на то, сколько именно платит этот человек — удобно, если кто-то пользуется с нескольких устройств.</div>
+        <div class="add-form-actions">
+          <button class="btn btn-cancel" id="add-cancel" type="button">Отмена</button>
+          <button class="btn btn-save" id="add-save" type="button">Добавить</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="users-list" id="users-list"></div>
+  <div class="empty-state" id="empty-state" style="display:none;">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    <p>Пока никого нет. Добавьте первого участника.</p>
+  </div>
+</main>
+
+<div class="overlay" id="settings-overlay">
+  <div class="settings-panel">
+    <button class="icon-btn settings-close" id="settings-close" aria-label="Закрыть">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+    <div>
+      <h2>Настройки</h2>
+      <p class="sub">Стоимость аренды и план сборов</p>
+    </div>
+    <div class="field">
+      <label>Стоимость аренды VPN (расход)</label>
+      <input type="number" id="set-total" min="0" step="1">
+    </div>
+    <div class="field">
+      <label>Собирать с 1 доли (оставьте пустым для авторасчёта)</label>
+      <input type="number" id="set-collect-rate" min="0" step="1" placeholder="Например: 150">
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Валюта</label>
+        <input type="text" id="set-currency" maxlength="4">
+      </div>
+      <div class="field">
+        <label>Период</label>
+        <select id="set-period">
+          <option value="месяц">Месяц</option>
+          <option value="квартал">Квартал</option>
+          <option value="год">Год</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label>День оплаты (число месяца)</label>
+      <input type="number" id="set-due-day" min="1" max="28">
+    </div>
+    <div class="settings-note" id="settings-live-preview"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  const STORAGE_KEY = 'vpn-tracker-v1';
+  const AVATAR_COLORS = ['--planned','--progress','--done','--note','--overdue'];
+
+  let state = load();
+
+  function load(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(raw) {
+        const data = JSON.parse(raw);
+        if(data.settings && data.settings.collectRate === undefined) data.settings.collectRate = null;
+        return data;
+      }
+    }catch(e){}
+    return {
+      settings:{ total:0, collectRate:null, currency:'₽', period:'месяц', dueDay:5 },
+      users:[]
+    };
+  }
+  function persist(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+
+  function cryptoId(){
+    return 'u_' + Math.random().toString(36).slice(2,10) + Date.now().toString(36);
+  }
+
+  // ---------- helpers ----------
+  function fmt(n){
+    n = Math.round(n * 100) / 100;
+    return n.toLocaleString('ru-RU', { maximumFractionDigits:2 });
+  }
+  function totalWeight(){
+    return state.users.reduce((s,u)=> s + (u.multiplier||1), 0) || 1;
+  }
+  function shareFor(user){
+    const w = totalWeight();
+    const base = state.settings.collectRate || (w > 0 ? state.settings.total / w : 0);
+    return base * (user.multiplier||1);
+  }
+  function avatarColorVar(idx){
+    return `var(${AVATAR_COLORS[idx % AVATAR_COLORS.length]})`;
+  }
+  function initials(name){
+    return (name||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase();
+  }
+
+  function daysUntilDue(){
+    const now = new Date();
+    const day = Math.min(Math.max(state.settings.dueDay || 1, 1), 28);
+    let due = new Date(now.getFullYear(), now.getMonth(), day);
+    if(due < new Date(now.getFullYear(), now.getMonth(), now.getDate())) {
+      due = new Date(now.getFullYear(), now.getMonth()+1, day);
+    }
+    const diffMs = due - new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return Math.round(diffMs / 86400000);
+  }
+
+  // ---------- toast ----------
+  const toastEl = document.getElementById('toast');
+  let toastTimer = null;
+  function showToast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=> toastEl.classList.remove('show'), 2200);
+  }
+
+  // ---------- render ----------
+  const dueChipEl = document.getElementById('due-chip');
+  const periodLabelEl = document.getElementById('period-label-text');
+  
+  const statTotalValue = document.getElementById('stat-total-value');
+  const statPerPerson = document.getElementById('stat-per-person');
+  const statPerPersonSub = document.getElementById('stat-per-person-sub');
+  const statCollected = document.getElementById('stat-collected');
+  const statCollectedSub = document.getElementById('stat-collected-sub');
+  
+  const statRemaining = document.getElementById('stat-remaining');
+  const statRemainingLabel = document.getElementById('stat-remaining-label');
+  const statRemainingSub = document.getElementById('stat-remaining-sub');
+  
+  const progressFill = document.getElementById('progress-fill');
+  const usersListEl = document.getElementById('users-list');
+  const emptyStateEl = document.getElementById('empty-state');
+
+  let currentFilter = 'all';
+  let searchQuery = '';
+
+  function render(){
+    const { settings, users } = state;
+    const cur = settings.currency || '₽';
+    const w = totalWeight();
+
+    // topbar due chip
+    const d = daysUntilDue();
+    dueChipEl.textContent = d === 0 ? 'Оплата сегодня' : d < 0 ? 'Просрочено' : `До оплаты: ${d} дн.`;
+    dueChipEl.className = 'due-chip ' + (d <= 0 ? 'late' : d <= 3 ? 'soon' : 'ok');
+    periodLabelEl.textContent = `Период: ${settings.period || 'месяц'} · аренда ${fmt(settings.total)} ${cur}`;
+
+    // 1. Total rent
+    statTotalValue.innerHTML = `${fmt(settings.total)} <span>${cur}</span>`;
+
+    // 2. Per Person (Collect Rate)
+    const minPerPerson = users.length ? settings.total / w : 0;
+    const actualPerPerson = settings.collectRate || minPerPerson;
+    const expectedTotal = actualPerPerson * w;
+
+    if(users.length) {
+      statPerPerson.innerHTML = `${fmt(actualPerPerson)} <span>${cur} / доля</span>`;
+      statPerPersonSub.textContent = settings.collectRate ? `Мин. нужно: ${fmt(minPerPerson)} ${cur}` : 'Авторасчёт (поровну)';
+    } else {
+      statPerPerson.innerHTML = `— <span>нет людей</span>`;
+      statPerPersonSub.textContent = '';
+    }
+
+    // 3. Collected
+    const collected = users.filter(u=>u.paid).reduce((s,u)=> s + shareFor(u), 0);
+    statCollected.innerHTML = `${fmt(collected)} <span>${cur}</span>`;
+    statCollectedSub.textContent = `из ${fmt(expectedTotal)} ${cur} (план)`;
+
+    // 4. Remaining or Surplus
+    const remainingToRent = settings.total - collected;
+    if(remainingToRent > 0 || settings.total === 0) {
+      statRemainingLabel.textContent = 'Не хватает';
+      statRemaining.innerHTML = `${fmt(remainingToRent)} <span>${cur}</span>`;
+      statRemaining.style.color = '#fff';
+      statRemainingSub.textContent = 'до оплаты аренды';
+    } else {
+      statRemainingLabel.textContent = 'Остаток (в плюсе)';
+      statRemaining.innerHTML = `${fmt(Math.abs(remainingToRent))} <span>${cur}</span>`;
+      statRemaining.style.color = 'var(--done)';
+      statRemainingSub.textContent = 'аренда покрыта';
+    }
+
+    // Progress Track
+    const pct = expectedTotal > 0 ? Math.min(100, (collected/expectedTotal)*100) : 0;
+    progressFill.style.width = pct + '%';
+    progressFill.style.background = remainingToRent <= 0 && settings.total > 0 ? 'var(--done)' : 'var(--progress)';
+
+    // users list
+    renderUsers();
+  }
+
+  function renderUsers(){
+    const cur = state.settings.currency || '₽';
+    let list = state.users.slice();
+
+    if(searchQuery){
+      const q = searchQuery.toLowerCase();
+      list = list.filter(u => u.name.toLowerCase().includes(q));
+    }
+    if(currentFilter === 'paid') list = list.filter(u=>u.paid);
+    if(currentFilter === 'unpaid') list = list.filter(u=>!u.paid);
+
+    // unpaid first, so it's obvious who to remind
+    list.sort((a,b)=> (a.paid === b.paid) ? 0 : (a.paid ? 1 : -1));
+
+    usersListEl.innerHTML = '';
+    emptyStateEl.style.display = state.users.length === 0 ? 'block' : 'none';
+
+    list.forEach(user => {
+      const idx = state.users.indexOf(user);
+      const amount = shareFor(user);
+      const row = document.createElement('div');
+      row.className = 'card user-row ' + (user.paid ? 'is-paid' : 'is-unpaid');
+
+      const historyDots = (user.history||[]).slice(-6).map(p =>
+        `<span class="hist-dot ${p ? 'paid':'unpaid'}"></span>`
+      ).join('');
+
+      row.innerHTML = `
+        <div class="user-avatar" style="background:${avatarColorVar(idx)}">${initials(user.name)}</div>
+        <div class="user-main">
+          <div class="user-name-row">
+            <span class="user-name"></span>
+            ${user.multiplier !== 1 ? `<span class="user-multiplier">×${user.multiplier}</span>` : ''}
+          </div>
+          ${user.note ? `<div class="user-note"></div>` : ''}
+          ${historyDots ? `<div class="user-history">${historyDots}</div>` : ''}
+        </div>
+        <div class="user-amount">
+          <div class="amt">${fmt(amount)} ${cur}</div>
+          <div class="status-label ${user.paid ? 'paid':'unpaid'}">${user.paid ? 'Оплатил' : 'Не оплатил'}</div>
+        </div>
+        <button class="pay-toggle ${user.paid ? 'paid':''}" title="${user.paid ? 'Отметить как неоплачено' : 'Отметить как оплачено'}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>
+        </button>
+        <div class="user-actions">
+          <button class="icon-btn remind-btn" title="Скопировать напоминание">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          </button>
+          <button class="icon-btn danger delete-btn" title="Удалить">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0-1 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1L5 6"/></svg>
+          </button>
+        </div>
+      `;
+      row.querySelector('.user-name').textContent = user.name;
+      if(user.note) row.querySelector('.user-note').textContent = user.note;
+
+      row.querySelector('.pay-toggle').addEventListener('click', () => {
+        user.paid = !user.paid;
+        persist();
+        render();
+      });
+      row.querySelector('.remind-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        copyReminder(user, amount, cur);
+      });
+      row.querySelector('.delete-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        if(!confirm(`Удалить ${user.name} из списка?`)) return;
+        state.users = state.users.filter(u => u.id !== user.id);
+        persist();
+        render();
+      });
+
+      usersListEl.appendChild(row);
+    });
+  }
+
+  function copyReminder(user, amount, cur){
+    const d = daysUntilDue();
+    const dueText = d <= 0 ? 'уже пора' : `до ${d === 1 ? 'завтра' : `${d} дней`}`;
+    const text = `Привет! Не забудь скинуть за VPN — ${fmt(amount)} ${cur}, оплата ${dueText} 🙏`;
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('Напоминание скопировано');
+    }).catch(() => {
+      showToast('Не удалось скопировать');
+    });
+  }
+
+  // ---------- add user ----------
+  const addToggle = document.getElementById('add-toggle');
+  const addForm = document.getElementById('add-form');
+  const newNameInput = document.getElementById('new-user-name');
+  const newMultiplierSelect = document.getElementById('new-user-multiplier');
+  const newNoteInput = document.getElementById('new-user-note');
+
+  addToggle.addEventListener('click', () => {
+    addForm.classList.add('open');
+    addToggle.style.display = 'none';
+    setTimeout(()=> newNameInput.focus(), 200);
+  });
+  function closeAddForm(){
+    addForm.classList.remove('open');
+    addToggle.style.display = 'flex';
+    newNameInput.value = '';
+    newNoteInput.value = '';
+    newMultiplierSelect.value = '1';
+  }
+  document.getElementById('add-cancel').addEventListener('click', closeAddForm);
+  function submitAddForm(){
+    const name = newNameInput.value.trim();
+    if(!name){ newNameInput.focus(); return; }
+    state.users.push({
+      id: cryptoId(),
+      name,
+      multiplier: parseFloat(newMultiplierSelect.value) || 1,
+      note: newNoteInput.value.trim(),
+      paid: false,
+      history: []
+    });
+    persist();
+    closeAddForm();
+    render();
+  }
+  document.getElementById('add-save').addEventListener('click', submitAddForm);
+  newNameInput.addEventListener('keydown', e => { if(e.key === 'Enter') submitAddForm(); });
+
+  // ---------- filters / search ----------
+  document.getElementById('search-input').addEventListener('input', e => {
+    searchQuery = e.target.value;
+    renderUsers();
+  });
+  document.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      currentFilter = chip.dataset.filter;
+      renderUsers();
+    });
+  });
+
+  // ---------- new period ----------
+  document.getElementById('new-period-btn').addEventListener('click', () => {
+    if(state.users.length === 0){ showToast('Сначала добавьте участников'); return; }
+    if(!confirm('Начать новый период? Текущие отметки об оплате обнулятся (история сохранится).')) return;
+    state.users.forEach(u => {
+      u.history = [...(u.history||[]), u.paid].slice(-6);
+      u.paid = false;
+    });
+    persist();
+    render();
+    showToast('Новый период начат');
+  });
+
+  // ---------- settings ----------
+  const settingsOverlay = document.getElementById('settings-overlay');
+  const setTotal = document.getElementById('set-total');
+  const setCollectRate = document.getElementById('set-collect-rate');
+  const setCurrency = document.getElementById('set-currency');
+  const setPeriod = document.getElementById('set-period');
+  const setDueDay = document.getElementById('set-due-day');
+  const settingsPreview = document.getElementById('settings-live-preview');
+
+  function openSettings(){
+    setTotal.value = state.settings.total || 0;
+    setCollectRate.value = state.settings.collectRate || '';
+    setCurrency.value = state.settings.currency || '₽';
+    setPeriod.value = state.settings.period || 'месяц';
+    setDueDay.value = state.settings.dueDay || 5;
+    updateSettingsPreview();
+    settingsOverlay.classList.add('open');
+  }
+  function closeSettings(){ settingsOverlay.classList.remove('open'); }
+  
+  function updateSettingsPreview(){
+    const total = parseFloat(setTotal.value) || 0;
+    const rateVal = parseFloat(setCollectRate.value);
+    const w = totalWeight();
+    const minPer = state.users.length ? total / w : 0;
+    const activeRate = (!isNaN(rateVal) && rateVal > 0) ? rateVal : minPer;
+    const expTotal = activeRate * w;
+    const cur = setCurrency.value || '₽';
+
+    settingsPreview.innerHTML = state.users.length
+      ? `Мин. нужно собрать с доли: <b>${fmt(minPer)} ${cur}</b>.<br>При сборе ${fmt(activeRate)} ${cur} со всех соберётся: <b>${fmt(expTotal)} ${cur}</b>.`
+      : 'Добавьте участников, чтобы увидеть расчёт доли на человека.';
+  }
+  
+  document.getElementById('open-settings').addEventListener('click', openSettings);
+  document.getElementById('settings-close').addEventListener('click', closeSettings);
+  document.getElementById('stat-total').addEventListener('click', openSettings);
+  settingsOverlay.addEventListener('click', e => { if(e.target === settingsOverlay) closeSettings(); });
+  document.addEventListener('keydown', e => { if(e.key === 'Escape' && settingsOverlay.classList.contains('open')) closeSettings(); });
+
+  [setTotal, setCollectRate, setCurrency, setPeriod, setDueDay].forEach(el => {
+    el.addEventListener('input', () => {
+      state.settings.total = parseFloat(setTotal.value) || 0;
+      
+      const cr = parseFloat(setCollectRate.value);
+      state.settings.collectRate = (isNaN(cr) || cr <= 0) ? null : cr;
+      
+      state.settings.currency = setCurrency.value.trim() || '₽';
+      state.settings.period = setPeriod.value;
+      state.settings.dueDay = Math.min(Math.max(parseInt(setDueDay.value) || 1, 1), 28);
+      
+      persist();
+      updateSettingsPreview();
+      render();
+    });
+  });
+
+  // ---------- init ----------
+  render();
+})();
+</script>
+</body>
+</html>

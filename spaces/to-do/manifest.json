@@ -1,0 +1,132 @@
+{
+  "PackageFormatVersion": 1,
+  "Space": {
+    "Name": "To do",
+    "Description": null,
+    "Category": null,
+    "Tags": [],
+    "CoverImage": "assets/cover.jpg",
+    "Icon": null,
+    "WallpaperImage": null
+  },
+  "Folders": [],
+  "Tools": [
+    {
+      "TempId": "tool-1",
+      "Name": "ChatGPT",
+      "Version": "6.0",
+      "Description": "AI tool",
+      "Category": "AI",
+      "Keywords": [],
+      "Type": "Online",
+      "Url": "https://chatgpt.com/",
+      "SiteEntryRelative": null,
+      "Icon": null
+    },
+    {
+      "TempId": "tool-2",
+      "Name": "To do",
+      "Version": "0.7",
+      "Description": "",
+      "Category": "",
+      "Keywords": [],
+      "Type": "Local",
+      "Url": null,
+      "SiteEntryRelative": "indexz12.html",
+      "Icon": null
+    },
+    {
+      "TempId": "tool-3",
+      "Name": "VPN Tracker",
+      "Version": "1.0.0",
+      "Description": "",
+      "Category": "",
+      "Keywords": [],
+      "Type": "Local",
+      "Url": null,
+      "SiteEntryRelative": "vpn-tracker2.html",
+      "Icon": "tools/tool-3/icon.jpg"
+    },
+    {
+      "TempId": "tool-4",
+      "Name": "\u043A\u0430\u0440\u0442\u0430 \u0438\u0441\u0442\u043E\u0440\u0438\u0438 \u0447\u0435\u043B\u043E\u0432\u0435\u0447\u0435\u0441\u0442\u0432\u0430",
+      "Version": "1.0",
+      "Description": "\u043A\u0430\u0440\u0442\u0430 \u0438\u0441\u0442\u043E\u0440\u0438\u0438 \u0447\u0435\u043B\u043E\u0432\u0435\u0447\u0435\u0441\u0442\u0432\u0430 \u0441 \u043B\u0438\u043D\u0438\u044F\u043C\u0438",
+      "Category": "\u043A\u0430\u0440\u0442\u0430, \u0442\u0435\u0441\u0442",
+      "Keywords": [],
+      "Type": "Local",
+      "Url": null,
+      "SiteEntryRelative": "\u043A\u0430\u0440\u0442\u0430 \u0438\u0441\u0442\u043E\u0440\u0438\u0438 \u0447\u0435\u043B\u043E\u0432\u0435\u0447\u0435\u0441\u0442\u0432\u0430.html",
+      "Icon": "tools/tool-4/icon.jpg"
+    },
+    {
+      "TempId": "tool-5",
+      "Name": "\uD83C\uDDF8\uD83C\uDDEA | 3X-UI (#1)",
+      "Version": "3.8",
+      "Description": "3X-UI Sweden #1",
+      "Category": "VPN",
+      "Keywords": [],
+      "Type": "Online",
+      "Url": "https://94.242.58.213.cdn-one.org/9UgqcE4RMm/",
+      "SiteEntryRelative": null,
+      "Icon": null
+    }
+  ],
+  "MediaBlocks": [
+    {
+      "TempId": "media-1",
+      "Type": "Image",
+      "Text": null,
+      "Image": "assets/media-9db34cf1-a2db-4853-91db-230c4360f0c1.jpg"
+    },
+    {
+      "TempId": "media-2",
+      "Type": "Image",
+      "Text": null,
+      "Image": "assets/media-c90386c2-dcc2-4191-a064-02157545e4c0.jpg"
+    },
+    {
+      "TempId": "media-3",
+      "Type": "Text",
+      "Text": "Write a note note note note note note note note note note note note note note note note note note note note note note note note note note note",
+      "Image": null
+    }
+  ],
+  "Layout": {
+    "ToolRefs": [
+      "p:tool-1",
+      "p:tool-2",
+      "p:tool-3",
+      "p:tool-4",
+      "p:tool-5"
+    ],
+    "FolderToolRefs": {},
+    "FavoriteToolRefs": [],
+    "ShortcutToolRefs": [
+      "p:tool-3",
+      "p:tool-5"
+    ],
+    "TilePositions": {
+      "unfoldered:p:tool-1": {
+        "Row": 0,
+        "Col": 4
+      },
+      "unfoldered:media:p:media-1": {
+        "Row": 2,
+        "Col": 4
+      },
+      "unfoldered:media:p:media-2": {
+        "Row": 4,
+        "Col": 0
+      },
+      "unfoldered:media:p:media-3": {
+        "Row": 5,
+        "Col": 6
+      },
+      "unfoldered:p:tool-3": {
+        "Row": 2,
+        "Col": 0
+      }
+    }
+  }
+}

@@ -1,0 +1,1835 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Планировщик задач</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --planned:#A78BFA;
+    --progress:#60A5FA;
+    --done:#4ADE9B;
+    --note:#F5C453;
+
+    --bg:#0A0A11;
+    --text:#EDEBF5;
+    --text-soft:#9A96AE;
+    --text-faint:#6D6980;
+
+    --glass-bg: rgba(255,255,255,0.08);
+    --glass-bg-strong: rgba(255,255,255,0.13);
+    --glass-border: rgba(255,255,255,0.13);
+    --glass-border-strong: rgba(255,255,255,0.24);
+    --glass-blur: 22px;
+    --radius:16px;
+    --radius-sm:11px;
+
+    --ease-spring: cubic-bezier(.34,1.56,.64,1);
+    --ease-out: cubic-bezier(.16,1,.3,1);
+    --ease-soft: cubic-bezier(.4,0,.2,1);
+  }
+
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    font-family:'Manrope', system-ui, sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important; }
+  }
+
+  /* ---------- Ambient shimmering background ---------- */
+  .ambient{
+    position:fixed; inset:-10%; z-index:0; pointer-events:none;
+    filter:blur(90px); opacity:0;
+    animation: ambientIn 1.8s var(--ease-out) forwards .1s;
+  }
+  @keyframes ambientIn{ to{ opacity:0.55; } }
+  .ambient span{ position:absolute; border-radius:50%; will-change:transform; mix-blend-mode:screen; }
+  .ambient span:nth-child(1){
+    width:46vw; height:46vw; top:-8%; left:-6%;
+    background:radial-gradient(circle at 30% 30%, rgba(167,139,250,0.35), transparent 70%);
+    animation: drift1 46s ease-in-out infinite;
+  }
+  .ambient span:nth-child(2){
+    width:50vw; height:50vw; bottom:-14%; right:-10%;
+    background:radial-gradient(circle at 60% 60%, rgba(96,165,250,0.30), transparent 70%);
+    animation: drift2 52s ease-in-out infinite;
+  }
+  .ambient span:nth-child(3){
+    width:36vw; height:36vw; top:35%; left:38%;
+    background:radial-gradient(circle at 50% 50%, rgba(74,222,155,0.22), transparent 70%);
+    animation: drift3 60s ease-in-out infinite;
+  }
+  @keyframes drift1{ 0%,100%{transform:translate(0,0) scale(1);} 50%{transform:translate(6%,8%) scale(1.12);} }
+  @keyframes drift2{ 0%,100%{transform:translate(0,0) scale(1);} 50%{transform:translate(-7%,-5%) scale(1.08);} }
+  @keyframes drift3{ 0%,100%{transform:translate(-4%,3%) scale(1);} 50%{transform:translate(5%,-6%) scale(1.15);} }
+
+  .app{ position:relative; z-index:1; display:flex; min-height:100vh; }
+
+  /* ---------- Floating acrylic island sidebar ---------- */
+  .sidebar{
+    position:fixed;
+    top:50%;
+    left:22px;
+    transform:translateY(-50%) translateX(-40px) scale(.92);
+    opacity:0;
+    z-index:40;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:6px;
+    padding:14px 10px;
+    border-radius:999px;
+    isolation:isolate;
+    animation: sidebarIn .8s var(--ease-out) forwards .25s;
+    /* dimmer, calmer acrylic tone for the island specifically */
+    --glass-bg: rgba(255,255,255,0.045);
+    --glass-bg-strong: rgba(255,255,255,0.08);
+    --glass-border: rgba(255,255,255,0.09);
+    --glass-border-strong: rgba(255,255,255,0.16);
+  }
+  @keyframes sidebarIn{ to{ transform:translateY(-50%) translateX(0) scale(1); opacity:1; } }
+
+  /* flat acrylic (frosted) glass layer — plain blur, no liquid distortion or cursor tracking */
+  .sidebar::before{
+    content:"";
+    position:absolute; inset:0;
+    border-radius:999px;
+    background:var(--glass-bg);
+    backdrop-filter:blur(var(--glass-blur)) saturate(150%);
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(150%);
+    z-index:-3;
+  }
+  /* soft static bevel to sell a frosted acrylic slab, dialed down */
+  .sidebar::after{
+    content:"";
+    position:absolute; inset:0;
+    border-radius:999px;
+    pointer-events:none;
+    z-index:-2;
+    background:
+      radial-gradient(120px 160px at 22% 8%, rgba(255,255,255,0.16), transparent 55%),
+      linear-gradient(200deg, rgba(255,255,255,0.03), rgba(255,255,255,0) 30%, rgba(0,0,0,0.14) 100%);
+    mix-blend-mode:overlay;
+    opacity:0.75;
+  }
+  .sidebar{
+    border:1px solid var(--glass-border);
+    box-shadow:
+      0 14px 40px rgba(0,0,0,0.45),
+      0 2px 8px rgba(0,0,0,0.3),
+      inset 0 1.5px 0 rgba(255,255,255,0.18),
+      inset 0 -1.5px 3px rgba(0,0,0,0.25),
+      inset 1px 0 0 rgba(255,255,255,0.05),
+      inset -1px 0 0 rgba(0,0,0,0.1);
+  }
+
+  .nav-item{
+    position:relative;
+    width:44px; height:44px;
+    display:flex; align-items:center; justify-content:center;
+    border-radius:50%;
+    color:var(--text-soft);
+    cursor:pointer;
+    transition:background .3s var(--ease-soft), color .3s var(--ease-soft), transform .35s var(--ease-spring), box-shadow .3s var(--ease-soft);
+  }
+  .nav-item svg{ width:19px; height:19px; transition:transform .35s var(--ease-spring); }
+  .nav-item:not(.disabled):hover{ background:rgba(255,255,255,0.10); color:var(--text); transform:translateY(-3px) scale(1.1); }
+  .nav-item:not(.disabled):hover svg{ transform:scale(1.06); }
+  .nav-item:not(.disabled):active{ transform:translateY(-1px) scale(0.96); }
+
+  .nav-item.active{
+    background:var(--glass-bg-strong);
+    color:#fff;
+    border:1px solid var(--glass-border-strong);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.14), 0 0 0 1px rgba(167,139,250,0.12), 0 0 8px -3px rgba(167,139,250,0.35);
+  }
+  .nav-item.active::before{
+    content:"";
+    position:absolute; inset:-1px; border-radius:50%;
+    background:radial-gradient(circle at 30% 25%, rgba(167,139,250,0.16), transparent 65%);
+    pointer-events:none;
+  }
+  .nav-item.disabled{ cursor:default; opacity:0.5; }
+  .nav-item.disabled:hover{ transform:none; }
+  .nav-item .soon-dot{ position:absolute; top:3px; right:3px; width:6px; height:6px; border-radius:50%; background:var(--text-faint); }
+  .nav-item .tooltip{
+    position:absolute; left:56px; top:50%;
+    transform:translateY(-50%) translateX(-8px) scale(.95);
+    background:rgba(22,20,32,0.85);
+    border:1px solid var(--glass-border);
+    backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    color:var(--text); font-size:12px; font-weight:600; white-space:nowrap;
+    padding:6px 10px; border-radius:8px; opacity:0; pointer-events:none;
+    transition:opacity .2s var(--ease-out), transform .3s var(--ease-spring);
+  }
+  .nav-item:hover .tooltip{ opacity:1; transform:translateY(-50%) translateX(0) scale(1); }
+  .sidebar-divider{ width:22px; height:1px; background:var(--glass-border); margin:6px 0; }
+
+  /* ---------- Main ---------- */
+  main{ flex:1; padding:36px 40px 48px 118px; min-width:0; }
+
+  .page-header{
+    display:flex; align-items:flex-end; justify-content:space-between;
+    margin-bottom:28px; gap:16px; flex-wrap:wrap;
+    opacity:0; transform:translateY(10px);
+    animation: fadeUp .6s var(--ease-out) forwards .35s;
+  }
+  @keyframes fadeUp{ to{ opacity:1; transform:translateY(0); } }
+
+  .page-title h1{ margin:0 0 4px 0; font-size:27px; font-weight:800; letter-spacing:-0.3px; color:#fff; }
+  .page-title p{ margin:0; color:var(--text-soft); font-size:14px; text-transform:capitalize; }
+
+  .archive-btn{
+    display:flex; align-items:center; gap:8px;
+    background:var(--glass-bg); border:1px solid var(--glass-border);
+    backdrop-filter:blur(var(--glass-blur)) saturate(160%);
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(160%);
+    color:var(--text); font-family:inherit; font-weight:600; font-size:13px;
+    padding:10px 15px; border-radius:12px; cursor:pointer;
+    transition:border-color .25s var(--ease-soft), background .25s var(--ease-soft), transform .25s var(--ease-spring);
+  }
+  .archive-btn:hover{ background:var(--glass-bg-strong); border-color:var(--glass-border-strong); transform:translateY(-2px); }
+  .archive-btn:active{ transform:translateY(0) scale(.97); }
+  .archive-btn svg{ width:16px; height:16px; }
+  .archive-count{
+    background:rgba(255,255,255,0.08); border-radius:20px; padding:1px 8px;
+    font-size:12px; font-weight:700; color:var(--text-soft);
+    display:inline-block;
+  }
+  .archive-count.bump{ animation:bump .4s var(--ease-spring); }
+  @keyframes bump{ 0%{transform:scale(1);} 40%{transform:scale(1.35);} 100%{transform:scale(1);} }
+
+  /* ---------- Board ---------- */
+  .board{ display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:20px; align-items:start; }
+  .column{ opacity:0; transform:translateY(14px); animation: fadeUp .6s var(--ease-out) forwards; }
+  .column:nth-child(1){ animation-delay:.42s; }
+  .column:nth-child(2){ animation-delay:.5s; }
+  .column:nth-child(3){ animation-delay:.58s; }
+
+  .column-header{ display:flex; align-items:center; gap:9px; padding:2px 6px 14px 6px; }
+  .dot{ width:9px; height:9px; border-radius:50%; flex-shrink:0; box-shadow:0 0 10px 1px currentColor; transition:box-shadow .3s var(--ease-soft), opacity .3s var(--ease-soft); }
+  .dot.dim{ box-shadow:none; opacity:0.3; }
+  .column-header .label{ font-size:14px; font-weight:700; color:var(--text); }
+  .column-header .count{
+    margin-left:auto; font-size:12px; font-weight:700; color:var(--text-soft);
+    background:var(--glass-bg); border:1px solid var(--glass-border);
+    padding:1px 9px; border-radius:20px; display:inline-block;
+  }
+  .column-header .count.bump{ animation:bump .4s var(--ease-spring); }
+
+  .column[data-status="planned"] .dot{ background:var(--planned); color:var(--planned); }
+  .column[data-status="progress"] .dot{ background:var(--progress); color:var(--progress); }
+  .column[data-status="done"] .dot{ background:var(--done); color:var(--done); }
+
+  .drop-zone{ display:flex; flex-direction:column; gap:10px; min-height:80px; padding:4px; border-radius:var(--radius); transition:background .2s var(--ease-soft); }
+  .drop-zone.drag-over{ background:rgba(255,255,255,0.045); }
+
+  .empty-state{
+    border:1.5px dashed var(--glass-border); border-radius:var(--radius-sm);
+    padding:20px 14px; text-align:center; color:var(--text-faint);
+    font-size:13px; line-height:1.5;
+    opacity:0; animation: fadeUp .35s var(--ease-out) forwards;
+  }
+
+  .card{
+    background:var(--glass-bg);
+    border-radius:var(--radius-sm);
+    border:1px solid var(--glass-border);
+    border-left-width:3px;
+    backdrop-filter:blur(var(--glass-blur)) saturate(160%);
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(160%);
+    padding:12px 12px 10px 13px;
+    cursor:grab;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.09), inset 0 -6px 10px -8px rgba(0,0,0,0.3);
+    transition:border-color .25s var(--ease-soft), background .25s var(--ease-soft),
+               transform .3s var(--ease-spring), box-shadow .3s var(--ease-soft);
+  }
+  .card.enter{ animation: cardIn .45s var(--ease-out) both; }
+  @keyframes cardIn{ from{ opacity:0; transform:translateY(8px) scale(.98); } to{ opacity:1; transform:translateY(0) scale(1); } }
+  .card.moved{ animation: movedPulse .5s var(--ease-spring); }
+  @keyframes movedPulse{ 0%{ transform:scale(1); } 45%{ transform:scale(1.035); } 100%{ transform:scale(1); } }
+
+  .card:hover{
+    background:var(--glass-bg-strong);
+    transform:translateY(-3px);
+    box-shadow:0 10px 24px -8px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12);
+  }
+  .card:active{ cursor:grabbing; }
+  .card.dragging{ opacity:0.5; transform:rotate(-2deg) scale(1.03); }
+  .card.removing{
+    transition:opacity .22s var(--ease-soft), transform .22s var(--ease-soft) !important;
+    opacity:0 !important; transform:translateX(10px) scale(.94) !important;
+  }
+  .card.archiving{
+    transition:opacity .28s var(--ease-soft), transform .28s var(--ease-soft) !important;
+    opacity:0 !important; transform:translateX(24px) scale(.92) !important;
+  }
+
+  .column[data-status="planned"] .card{ border-left-color:var(--planned); }
+  .column[data-status="progress"] .card{ border-left-color:var(--progress); }
+  .column[data-status="done"] .card{ border-left-color:var(--done); }
+
+  .card-text{ font-size:13.5px; font-weight:600; line-height:1.45; color:var(--text); word-break:break-word; white-space:pre-wrap; }
+  .card-meta{ display:flex; align-items:center; justify-content:space-between; margin-top:10px; }
+  .card-date{ font-size:11px; color:var(--text-faint); font-weight:600; }
+  .card-actions{ display:flex; gap:4px; }
+  .icon-btn{
+    width:24px; height:24px; display:flex; align-items:center; justify-content:center;
+    border:none; background:transparent; color:var(--text-faint);
+    border-radius:7px; cursor:pointer;
+    transition:background .2s var(--ease-soft), color .2s var(--ease-soft), transform .25s var(--ease-spring);
+  }
+  .icon-btn:hover{ background:rgba(255,255,255,0.09); color:var(--text); transform:scale(1.1); }
+  .icon-btn:active{ transform:scale(.9); }
+  .icon-btn svg{ width:14px; height:14px; }
+  .icon-btn.danger:hover{ color:#F17C9C; background:rgba(241,124,156,0.14); }
+
+  .add-row{ margin-top:12px; }
+  .add-toggle{
+    width:100%; display:flex; align-items:center; gap:8px;
+    background:transparent; border:1.5px dashed var(--glass-border);
+    border-radius:var(--radius-sm); padding:10px 12px;
+    font-family:inherit; font-size:13px; font-weight:600; color:var(--text-faint);
+    cursor:pointer;
+    transition:border-color .25s var(--ease-soft), color .25s var(--ease-soft), transform .25s var(--ease-spring), background .25s var(--ease-soft);
+  }
+  .add-toggle:hover{ color:var(--text); border-color:var(--glass-border-strong); background:rgba(255,255,255,0.03); transform:translateY(-2px); }
+  .add-toggle:active{ transform:translateY(0) scale(.98); }
+  .add-toggle svg{ width:15px; height:15px; transition:transform .3s var(--ease-spring); }
+  .add-toggle:hover svg{ transform:rotate(90deg); }
+
+  .add-form{
+    display:grid; grid-template-rows:0fr; opacity:0;
+    background:var(--glass-bg-strong);
+    border:1px solid var(--glass-border);
+    border-radius:var(--radius-sm);
+    backdrop-filter:blur(var(--glass-blur));
+    -webkit-backdrop-filter:blur(var(--glass-blur));
+    transition:grid-template-rows .4s var(--ease-out), opacity .3s var(--ease-soft);
+  }
+  .add-form.open{ grid-template-rows:1fr; opacity:1; }
+  .add-form-inner{ overflow:hidden; min-height:0; display:flex; flex-direction:column; gap:8px; padding:0 10px; }
+  .add-form.open .add-form-inner{ padding:10px; }
+  .add-form textarea{
+    resize:none; border:none; outline:none; background:transparent;
+    font-family:inherit; font-size:13.5px; font-weight:600; color:var(--text); min-height:44px;
+  }
+  .add-form textarea::placeholder{ color:var(--text-faint); }
+  .add-form-actions{ display:flex; justify-content:flex-end; gap:8px; }
+  .btn{
+    font-family:inherit; font-size:12.5px; font-weight:700;
+    padding:7px 13px; border-radius:8px; border:none; cursor:pointer;
+    transition:transform .2s var(--ease-spring), filter .2s var(--ease-soft);
+  }
+  .btn:hover{ filter:brightness(1.08); }
+  .btn:active{ transform:scale(.94); }
+  .btn-cancel{ background:transparent; color:var(--text-soft); }
+  .btn-cancel:hover{ color:var(--text); }
+  .btn-save{ color:#101018; }
+  .column[data-status="planned"] .btn-save{ background:var(--planned); }
+  .column[data-status="progress"] .btn-save{ background:var(--progress); }
+  .column[data-status="done"] .btn-save{ background:var(--done); }
+
+  /* ---------- Archive panel ---------- */
+  .overlay{
+    position:fixed; inset:0; background:rgba(5,5,10,0);
+    display:flex; align-items:flex-start; justify-content:flex-end;
+    z-index:50; pointer-events:none;
+    transition:background .35s var(--ease-soft);
+  }
+  .overlay.open{ background:rgba(5,5,10,0.5); pointer-events:auto; }
+  .archive-panel{
+    background:rgba(18,17,26,0.72);
+    border-left:1px solid var(--glass-border);
+    backdrop-filter:blur(30px) saturate(160%);
+    -webkit-backdrop-filter:blur(30px) saturate(160%);
+    width:380px; max-width:90vw; height:100vh;
+    padding:24px 20px; display:flex; flex-direction:column; overflow-y:auto;
+    transform:translateX(100%);
+    transition:transform .45s var(--ease-out);
+    box-shadow:-20px 0 60px rgba(0,0,0,0.4);
+  }
+  .overlay.open .archive-panel{ transform:translateX(0); }
+  .archive-panel h2{ margin:0 0 2px 0; font-size:17px; font-weight:800; color:#fff; }
+  .archive-panel .sub{ margin:0 0 18px 0; font-size:13px; color:var(--text-soft); }
+  .archive-close{ position:absolute; top:22px; right:396px; }
+  .archive-list{ display:flex; flex-direction:column; gap:10px; }
+  .archive-item{
+    background:var(--glass-bg); border:1px solid var(--glass-border);
+    border-left:3px solid var(--done); border-radius:var(--radius-sm); padding:11px 12px;
+    transition:opacity .22s var(--ease-soft), transform .22s var(--ease-soft), background .2s var(--ease-soft);
+  }
+  .archive-item.enter{ animation:cardIn .4s var(--ease-out) both; }
+  .archive-item:hover{ background:var(--glass-bg-strong); }
+  .archive-item.removing{ opacity:0 !important; transform:translateX(10px) scale(.95) !important; }
+  .archive-item .card-text{ font-size:13px; }
+  .archive-empty{
+    color:var(--text-faint); font-size:13px; text-align:center; padding:30px 10px;
+    border:1.5px dashed var(--glass-border); border-radius:10px;
+  }
+
+  /* ---------- Calendar (acrylic) ---------- */
+  .calendar-view{
+    opacity:0; transform:translateY(10px);
+    animation: fadeUp .5s var(--ease-out) forwards;
+  }
+  .calendar-panel{
+    background:var(--glass-bg);
+    border:1px solid var(--glass-border);
+    backdrop-filter:blur(var(--glass-blur)) saturate(150%);
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(150%);
+    border-radius:var(--radius);
+    padding:20px 22px 22px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.08), 0 10px 30px -14px rgba(0,0,0,0.5);
+  }
+  .calendar-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+  .calendar-title{ font-size:16px; font-weight:800; color:#fff; text-transform:capitalize; min-width:160px; text-align:center; }
+  .cal-nav-btn{ width:30px; height:30px; background:var(--glass-bg); border:1px solid var(--glass-border); border-radius:9px; }
+  .cal-nav-btn:hover{ background:var(--glass-bg-strong); }
+  .cal-today-btn{ background:var(--glass-bg); border:1px solid var(--glass-border); border-radius:9px; color:var(--text-soft); }
+  .cal-today-btn:hover{ background:var(--glass-bg-strong); color:var(--text); }
+  .calendar-weekdays{
+    display:grid; grid-template-columns:repeat(7,1fr); gap:8px;
+    padding:0 2px 8px; font-size:11px; font-weight:700; color:var(--text-faint);
+    text-transform:uppercase; text-align:center;
+  }
+  .calendar-grid{ display:grid; grid-template-columns:repeat(7,1fr); grid-auto-rows:96px; gap:8px; }
+  .calendar-day{
+    height:96px; border-radius:10px; border:1px solid var(--glass-border);
+    background:rgba(255,255,255,0.03); padding:7px 7px 6px;
+    display:flex; flex-direction:column; gap:5px; cursor:pointer; overflow:hidden;
+    transition:background .2s var(--ease-soft), border-color .2s var(--ease-soft);
+  }
+  .calendar-day:hover{ background:rgba(255,255,255,0.055); }
+  .calendar-day.other-month{ opacity:0.32; }
+  .calendar-day.today{ border-color:var(--progress); box-shadow:inset 0 0 0 1px var(--progress); }
+  .calendar-day.selected{ border-color:var(--planned); box-shadow:inset 0 0 0 1px var(--planned); background:rgba(167,139,250,0.08); }
+  .calendar-day.selected.today{ box-shadow:inset 0 0 0 1px var(--planned), inset 0 0 0 3px rgba(96,165,250,0.35); }
+  .calendar-day-num{ font-size:12px; font-weight:700; color:var(--text-soft); }
+  .calendar-day.today .calendar-day-num{ color:#fff; }
+  .calendar-day-tasks{ display:flex; flex-direction:column; gap:3px; overflow:hidden; min-height:0; }
+  .calendar-task-chip{
+    font-size:10.5px; font-weight:600; padding:2px 6px; border-radius:6px;
+    background:rgba(255,255,255,0.07); color:var(--text);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    border-left:2px solid var(--planned);
+  }
+  .calendar-task-chip.progress{ border-left-color:var(--progress); }
+  .calendar-task-chip.done{ border-left-color:var(--done); }
+  .calendar-more{ font-size:10px; font-weight:700; color:var(--text-faint); padding-left:2px; }
+
+  .btn-cancel.danger{ color:#F17C9C; }
+  .btn-cancel.danger:hover{ color:#F5A0B8; }
+
+  @media (max-width: 980px){
+    .calendar-day{ height:64px; }
+    .calendar-title{ min-width:0; font-size:14px; }
+  }
+
+  @media (max-width: 980px){
+    .board{ grid-template-columns:1fr; }
+    .sidebar{ top:auto; bottom:18px; left:50%; transform:translateX(-50%) translateY(20px) scale(.92); flex-direction:row; }
+    @keyframes sidebarIn{ to{ transform:translateX(-50%) translateY(0) scale(1); opacity:1; } }
+    main{ padding:100px 20px 40px 20px; }
+    .archive-close{ right:24px; top:24px; }
+  }
+
+  :focus-visible{ outline:2px solid var(--progress); outline-offset:2px; }
+
+  /* ---------- Card expand / edit ---------- */
+  .card-title{
+    font-size:13.5px; font-weight:600; line-height:1.45; color:var(--text);
+    word-break:break-word; overflow:hidden; text-overflow:ellipsis;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+  }
+  .card-tags{ display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
+  .tag-pill{
+    display:inline-flex; align-items:center; gap:5px;
+    font-size:10.5px; font-weight:700; padding:3px 9px 3px 8px; border-radius:999px;
+    background:rgba(255,255,255,0.06);
+    border:1px solid currentColor; white-space:nowrap;
+  }
+  .tag-pill .tag-label{ color:var(--text); }
+  .tag-pill .tag-dot{ width:6px; height:6px; border-radius:50%; flex-shrink:0; background:currentColor; }
+  .tag-pill.more{ color:var(--text-faint); background:transparent; border-style:dashed; }
+  .icon-btn.edit-task:hover{ color:var(--progress); background:rgba(96,165,250,0.14); }
+
+  /* ---------- Note detail bottom-sheet ---------- */
+  .sheet-overlay{
+    position:fixed; inset:0; z-index:70;
+    background:rgba(5,5,10,0); backdrop-filter:blur(0px); -webkit-backdrop-filter:blur(0px);
+    pointer-events:none;
+    transition:background .4s var(--ease-soft), backdrop-filter .4s var(--ease-soft);
+  }
+  .sheet-overlay.open{
+    background:rgba(5,5,10,0.5); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+    pointer-events:auto;
+  }
+  .sheet-title-float{
+    position:fixed; left:0; right:0; z-index:72;
+    max-width:760px; margin:0 auto; padding:0 34px;
+    display:flex; align-items:flex-end; justify-content:space-between; gap:14px;
+    pointer-events:none;
+    opacity:0; transform:translateY(14px);
+    transition:opacity .4s var(--ease-out), transform .4s var(--ease-out), bottom .45s var(--ease-out);
+  }
+  .sheet-overlay.open .sheet-title-float{ opacity:1; transform:translateY(0); pointer-events:auto; }
+  .sheet-title-float h2{
+    margin:0 0 16px 0; font-size:24px; font-weight:800; color:#fff; line-height:1.3;
+    word-break:break-word; text-shadow:0 2px 16px rgba(0,0,0,0.5);
+  }
+  .sheet-title-close{
+    flex-shrink:0; margin-bottom:14px;
+    background:var(--glass-bg-strong); border:1px solid var(--glass-border-strong);
+    backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+  }
+  .note-sheet{
+    position:fixed; left:0; right:0; bottom:0; z-index:71;
+    max-width:760px; margin:0 auto;
+    height:min(84vh, 780px);
+    background:rgba(18,17,26,0.86);
+    border:1px solid var(--glass-border);
+    border-bottom:none;
+    backdrop-filter:blur(32px) saturate(160%);
+    -webkit-backdrop-filter:blur(32px) saturate(160%);
+    border-radius:26px 26px 0 0;
+    box-shadow:0 -20px 60px rgba(0,0,0,0.55), inset 0 1.5px 0 rgba(255,255,255,0.1);
+    transform:translateY(100%);
+    transition:transform .45s var(--ease-out);
+    display:flex; flex-direction:column;
+    overflow:hidden;
+  }
+  .sheet-overlay.open .note-sheet{ transform:translateY(0); }
+  .note-sheet-handle{
+    width:40px; height:4px; border-radius:99px; background:rgba(255,255,255,0.18);
+    margin:12px auto 4px; flex-shrink:0;
+  }
+  .note-sheet-body{ padding:6px 32px 28px; overflow-y:auto; flex:1; min-height:0; }
+  .note-sheet-meta{ display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin:10px 0 16px; }
+  .note-sheet-date{
+    font-size:12.5px; font-weight:700; color:var(--text-faint);
+    display:flex; align-items:center; gap:5px;
+  }
+  .note-sheet-status{
+    font-size:11.5px; font-weight:700; padding:3px 11px; border-radius:999px;
+    border:1px solid currentColor;
+  }
+  .note-sheet-label{
+    font-size:11px; font-weight:700; letter-spacing:.3px; text-transform:uppercase;
+    color:var(--text-faint); margin:0 0 9px 0;
+  }
+  .note-sheet-textarea{
+    width:100%; min-height:180px; resize:vertical; border:1px solid var(--glass-border);
+    border-radius:var(--radius-sm); background:rgba(255,255,255,0.04); outline:none;
+    font-family:inherit; color:var(--text); font-size:14.5px; font-weight:500; padding:14px;
+    line-height:1.65;
+  }
+  .note-sheet-textarea::placeholder{ color:var(--text-faint); }
+
+  /* tag editor: existing pills + add button */
+  .note-sheet-tag-editor{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:6px; position:relative; }
+  .tag-pill .tag-remove{
+    border:none; background:transparent; color:inherit; cursor:pointer; display:flex;
+    padding:0; margin-left:1px; opacity:.6;
+  }
+  .tag-pill .tag-remove:hover{ opacity:1; }
+  .tag-add-btn{
+    width:26px; height:26px; border-radius:50%; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    background:var(--glass-bg-strong); border:1px dashed var(--glass-border-strong);
+    color:var(--text-soft); cursor:pointer;
+    transition:background .2s var(--ease-soft), color .2s var(--ease-soft), transform .25s var(--ease-spring);
+  }
+  .tag-add-btn:hover{ background:rgba(255,255,255,0.15); color:var(--text); transform:scale(1.08); }
+  .tag-add-btn svg{ width:13px; height:13px; }
+
+  /* tag picker popover */
+  .tag-picker{
+    position:absolute; top:calc(100% + 8px); left:0; z-index:5;
+    width:240px; max-height:280px;
+    background:rgba(24,22,34,0.95);
+    border:1px solid var(--glass-border-strong);
+    backdrop-filter:blur(24px) saturate(160%);
+    -webkit-backdrop-filter:blur(24px) saturate(160%);
+    border-radius:14px; padding:10px;
+    box-shadow:0 16px 40px rgba(0,0,0,0.5);
+    display:flex; flex-direction:column; gap:8px;
+    opacity:0; transform:translateY(-6px) scale(.97); pointer-events:none;
+    transition:opacity .2s var(--ease-out), transform .25s var(--ease-spring);
+  }
+  .tag-picker.open{ opacity:1; transform:translateY(0) scale(1); pointer-events:auto; }
+  .tag-picker-search{
+    width:100%; background:rgba(255,255,255,0.06); border:1px solid var(--glass-border);
+    border-radius:9px; color:var(--text); font-family:inherit; font-size:12.5px; font-weight:600;
+    padding:7px 10px; outline:none;
+  }
+  .tag-picker-search::placeholder{ color:var(--text-faint); }
+  .tag-picker-list{ display:flex; flex-direction:column; gap:2px; overflow-y:auto; max-height:190px; }
+  .tag-picker-item{
+    display:flex; align-items:center; gap:8px; padding:7px 8px; border-radius:8px;
+    font-size:12.5px; font-weight:600; color:var(--text); cursor:pointer; text-align:left;
+    background:transparent; border:none; font-family:inherit; width:100%;
+  }
+  .tag-picker-item:hover{ background:rgba(255,255,255,0.08); }
+  .tag-picker-item .tp-dot{ width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+  .tag-picker-item.tp-create{ color:var(--text); font-weight:700; }
+  .tag-picker-item.tp-create .tp-dot{ background:transparent; border:1.5px dashed var(--text-faint); }
+  .tag-picker-empty{ font-size:12px; color:var(--text-faint); padding:8px 8px; text-align:center; }
+
+  .note-sheet-actions{
+    display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:20px;
+  }
+  .note-save{ background:var(--progress); color:#101018; }
+
+  @media (max-width: 980px){
+    .note-sheet{ max-width:none; height:88vh; }
+    .sheet-title-float{ max-width:none; padding:0 20px; }
+    .sheet-title-float h2{ font-size:19px; }
+  }
+
+
+  /* ---------- Settings view ---------- */
+  .settings-view{
+    max-width:640px;
+    opacity:0; transform:translateY(10px);
+    animation: fadeUp .5s var(--ease-out) forwards;
+  }
+  .settings-section{
+    background:var(--glass-bg); border:1px solid var(--glass-border);
+    backdrop-filter:blur(var(--glass-blur)) saturate(150%);
+    -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(150%);
+    border-radius:var(--radius); padding:18px 20px; margin-bottom:16px;
+  }
+  .settings-section h3{ margin:0 0 3px 0; font-size:14.5px; font-weight:800; color:#fff; }
+  .settings-section .settings-sub{ margin:0 0 16px 0; font-size:12.5px; color:var(--text-soft); }
+  .settings-row{
+    display:flex; align-items:center; justify-content:space-between; gap:16px;
+    padding:12px 0; border-top:1px solid var(--glass-border);
+  }
+  .settings-row:first-of-type{ border-top:none; padding-top:0; }
+  .settings-row-label{ font-size:13.5px; font-weight:700; color:var(--text); }
+  .settings-row-desc{ font-size:12px; color:var(--text-soft); margin-top:2px; font-weight:500; }
+  .settings-control{ flex-shrink:0; }
+
+  .switch{ position:relative; display:inline-block; width:42px; height:24px; flex-shrink:0; }
+  .switch input{ opacity:0; width:0; height:0; position:absolute; }
+  .switch-track{
+    position:absolute; inset:0; background:rgba(255,255,255,0.12); border:1px solid var(--glass-border);
+    border-radius:999px; cursor:pointer; transition:background .25s var(--ease-soft);
+  }
+  .switch-track::before{
+    content:""; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%;
+    background:#EDEBF5; transition:transform .3s var(--ease-spring);
+    box-shadow:0 1px 3px rgba(0,0,0,0.4);
+  }
+  .switch input:checked + .switch-track{ background:var(--progress); border-color:transparent; }
+  .switch input:checked + .switch-track::before{ transform:translateX(18px); background:#fff; }
+
+  .settings-select{
+    background:var(--glass-bg-strong); border:1px solid var(--glass-border); color:var(--text);
+    font-family:inherit; font-size:12.5px; font-weight:700; padding:7px 10px; border-radius:9px;
+    cursor:pointer; outline:none;
+  }
+  .settings-select option{ background:#1a1826; color:var(--text); }
+
+  .accent-swatches{ display:flex; gap:8px; }
+  .accent-swatch{
+    width:26px; height:26px; border-radius:50%; cursor:pointer; border:2px solid transparent;
+    transition:transform .25s var(--ease-spring), border-color .2s var(--ease-soft);
+  }
+  .accent-swatch:hover{ transform:scale(1.12); }
+  .accent-swatch.active{ border-color:#fff; box-shadow:0 0 0 2px rgba(255,255,255,0.15); }
+
+  .settings-danger-btn{
+    background:rgba(241,124,156,0.12); border:1px solid rgba(241,124,156,0.3); color:#F17C9C;
+    font-family:inherit; font-weight:700; font-size:12.5px; padding:8px 14px; border-radius:9px; cursor:pointer;
+    transition:background .2s var(--ease-soft), transform .2s var(--ease-spring);
+  }
+  .settings-danger-btn:hover{ background:rgba(241,124,156,0.2); transform:translateY(-1px); }
+  .settings-btn{
+    background:var(--glass-bg-strong); border:1px solid var(--glass-border); color:var(--text);
+    font-family:inherit; font-weight:700; font-size:12.5px; padding:8px 14px; border-radius:9px; cursor:pointer;
+    transition:background .2s var(--ease-soft), transform .2s var(--ease-spring);
+  }
+  .settings-btn:hover{ background:rgba(255,255,255,0.15); transform:translateY(-1px); }
+  .settings-file-input{ display:none; }
+  .settings-toast{
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px); opacity:0;
+    background:rgba(22,20,32,0.9); border:1px solid var(--glass-border);
+    backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+    color:var(--text); font-size:13px; font-weight:700; padding:10px 18px; border-radius:11px;
+    z-index:80; pointer-events:none; transition:opacity .25s var(--ease-soft), transform .25s var(--ease-out);
+    box-shadow:0 10px 30px rgba(0,0,0,0.4);
+  }
+  .settings-toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  @media (max-width: 980px){
+    .settings-row{ flex-wrap:wrap; }
+  }
+
+  body.density-compact .card{ padding:8px 10px 7px 11px; }
+  body.density-compact .drop-zone{ gap:7px; }
+  body.density-compact .card-text, body.density-compact .card-title{ font-size:13px; }
+  body.density-compact .card-meta{ margin-top:6px; }
+
+  body.no-anim *{ animation-duration:.001ms !important; transition-duration:.001ms !important; }
+</style>
+</head>
+<body>
+
+<div class="ambient"><span></span><span></span><span></span></div>
+
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="nav-item active" id="nav-board" data-view="board">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+      <span class="tooltip">Главная</span>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="nav-item" id="nav-calendar" data-view="calendar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+      <span class="tooltip">Календарь</span>
+    </div>
+    <div class="nav-item" id="nav-settings" data-view="settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <span class="tooltip">Настройки</span>
+    </div>
+  </aside>
+
+  <main>
+    <div class="page-header">
+      <div class="page-title">
+        <h1>Мои задачи</h1>
+        <p id="today-label"></p>
+      </div>
+      <button class="archive-btn" id="open-archive">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8M10 12h4"/></svg>
+        Архив
+        <span class="archive-count" id="archive-count">0</span>
+      </button>
+    </div>
+
+    <div class="board" id="board"></div>
+
+    <div class="calendar-view" id="calendar-view" style="display:none">
+      <div class="calendar-panel">
+        <div class="calendar-header">
+          <button class="icon-btn cal-nav-btn" id="cal-prev" title="Предыдущий месяц">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <div class="calendar-title-group">
+            <div class="calendar-title" id="cal-title"></div>
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button class="btn btn-cancel cal-today-btn" id="cal-today" type="button">Сегодня</button>
+            <button class="icon-btn cal-nav-btn" id="cal-next" title="Следующий месяц">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="calendar-weekdays">
+          <span>пн</span><span>вт</span><span>ср</span><span>чт</span><span>пт</span><span>сб</span><span>вс</span>
+        </div>
+        <div class="calendar-grid" id="calendar-grid"></div>
+      </div>
+    </div>
+
+    <div class="settings-view" id="settings-view" style="display:none">
+      <div class="settings-section">
+        <h3>Внешний вид</h3>
+        <p class="settings-sub">Настройки интерфейса доски</p>
+        <div class="settings-row">
+          <div>
+            <div class="settings-row-label">Акцентный цвет</div>
+            <div class="settings-row-desc">Цвет активных элементов и подсветок</div>
+          </div>
+          <div class="settings-control accent-swatches" id="accent-swatches">
+            <span class="accent-swatch" data-accent="#A78BFA" style="background:#A78BFA"></span>
+            <span class="accent-swatch" data-accent="#60A5FA" style="background:#60A5FA"></span>
+            <span class="accent-swatch" data-accent="#4ADE9B" style="background:#4ADE9B"></span>
+            <span class="accent-swatch" data-accent="#F5C453" style="background:#F5C453"></span>
+            <span class="accent-swatch" data-accent="#F17C9C" style="background:#F17C9C"></span>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-row-label">Плотность карточек</div>
+            <div class="settings-row-desc">Компактный вид уменьшает отступы</div>
+          </div>
+          <div class="settings-control">
+            <select class="settings-select" id="density-select">
+              <option value="comfortable">Обычная</option>
+              <option value="compact">Компактная</option>
+            </select>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-row-label">Анимации</div>
+            <div class="settings-row-desc">Плавные переходы и появления карточек</div>
+          </div>
+          <div class="settings-control">
+            <label class="switch">
+              <input type="checkbox" id="animations-toggle" checked>
+              <span class="switch-track"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Поведение</h3>
+        <p class="settings-sub">Как ведёт себя доска и задачи</p>
+        <div class="settings-row">
+          <div>
+            <div class="settings-row-label">Открытие панели по клику</div>
+            <div class="settings-row-desc">Клик по карточке открывает панель с подробностями</div>
+          </div>
+          <div class="settings-control">
+            <label class="switch">
+              <input type="checkbox" id="expand-toggle" checked>
+              <span class="switch-track"></span>
+            </label>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-row-label">Подтверждение удаления</div>
+            <div class="settings-row-desc">Спрашивать перед удалением задачи</div>
+          </div>
+          <div class="settings-control">
+            <label class="switch">
+              <input type="checkbox" id="confirm-delete-toggle">
+              <span class="switch-track"></span>
+            </label>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-row-label">Автоархивирование</div>
+            <div class="settings-row-desc">Переносить выполненные задачи в архив спустя N дней</div>
+          </div>
+          <div class="settings-control">
+            <select class="settings-select" id="autoarchive-select">
+              <option value="0">Выключено</option>
+              <option value="1">1 день</option>
+              <option value="3">3 дня</option>
+              <option value="7">7 дней</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Данные</h3>
+        <p class="settings-sub">Резервное копирование и очистка</p>
+        <div class="settings-row">
+          <div>
+            <div class="settings-row-label">Экспорт задач</div>
+            <div class="settings-row-desc">Скачать все задачи и архив в файл .json</div>
+          </div>
+          <div class="settings-control">
+            <button class="settings-btn" id="export-btn" type="button">Экспортировать</button>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-row-label">Импорт задач</div>
+            <div class="settings-row-desc">Загрузить ранее экспортированный файл</div>
+          </div>
+          <div class="settings-control">
+            <button class="settings-btn" id="import-btn" type="button">Импортировать</button>
+            <input type="file" id="import-file" class="settings-file-input" accept="application/json">
+          </div>
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-row-label">Очистить архив</div>
+            <div class="settings-row-desc">Безвозвратно удалить всё из архива</div>
+          </div>
+          <div class="settings-control">
+            <button class="settings-danger-btn" id="clear-archive-btn" type="button">Очистить</button>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-row-label">Сбросить всё</div>
+            <div class="settings-row-desc">Удалить все задачи, архив и настройки</div>
+          </div>
+          <div class="settings-control">
+            <button class="settings-danger-btn" id="reset-all-btn" type="button">Сбросить</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="overlay" id="overlay">
+  <button class="icon-btn archive-close" id="close-archive" aria-label="Закрыть архив">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+  </button>
+  <div class="archive-panel">
+    <h2>Архив</h2>
+    <p class="sub">Выполненные задачи, убранные с доски</p>
+    <div class="archive-list" id="archive-list"></div>
+  </div>
+</div>
+
+<div class="settings-toast" id="settings-toast"></div>
+
+<div class="sheet-overlay" id="sheet-overlay">
+  <div class="sheet-title-float" id="sheet-title-float">
+    <h2 id="sheet-title"></h2>
+    <button class="icon-btn note-sheet-close sheet-title-close" id="sheet-close" aria-label="Закрыть">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="note-sheet" id="note-sheet">
+    <div class="note-sheet-handle"></div>
+    <div class="note-sheet-body">
+      <div class="note-sheet-meta">
+        <span class="note-sheet-date" id="sheet-date"></span>
+        <span class="note-sheet-status" id="sheet-status"></span>
+      </div>
+      <p class="note-sheet-label">Подробности</p>
+      <textarea class="note-sheet-textarea" id="sheet-textarea" placeholder="Подробности заметки…"></textarea>
+      <p class="note-sheet-label" style="margin-top:18px;">Метки</p>
+      <div class="note-sheet-tag-editor" id="sheet-tag-editor">
+        <button class="tag-add-btn" id="tag-add-btn" type="button" title="Добавить метку">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <div class="tag-picker" id="tag-picker">
+          <input class="tag-picker-search" id="tag-picker-search" type="text" placeholder="Поиск меток…" maxlength="20">
+          <div class="tag-picker-list" id="tag-picker-list"></div>
+        </div>
+      </div>
+      <div class="note-sheet-actions">
+        <button class="btn btn-cancel danger" id="sheet-delete" type="button">Удалить</button>
+        <button class="btn btn-save note-save" id="sheet-save" type="button">Сохранить</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const COLUMNS = [
+    { key:'planned',  label:'в планах' },
+    { key:'progress', label:'в процессе' },
+    { key:'done',     label:'выполнено' },
+  ];
+
+  const STORAGE_KEY = 'planner.tasks.v1';
+  const ARCHIVE_KEY = 'planner.archive.v1';
+  const SETTINGS_KEY = 'planner.settings.v1';
+
+  function load(key, fallback){
+    try{ const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }
+    catch(e){ return fallback; }
+  }
+  function save(key, value){ try{ localStorage.setItem(key, JSON.stringify(value)); }catch(e){} }
+
+  let tasks = load(STORAGE_KEY, [
+    { id: cryptoId(), text:'Придумать название проекта', status:'planned', created: Date.now(), tags:['идея'] },
+    { id: cryptoId(), text:'Сверстать главный экран', status:'progress', created: Date.now(), tags:['дизайн','срочно'] },
+    { id: cryptoId(), text:'Настроить сохранение задач', status:'done', created: Date.now(), tags:[] },
+  ]);
+  let archive = load(ARCHIVE_KEY, []);
+  let settings = load(SETTINGS_KEY, {
+    accent: '#A78BFA',
+    density: 'comfortable',
+    animations: true,
+    expandOnClick: true,
+    confirmDelete: false,
+    autoArchiveDays: 0
+  });
+  let selectedDate = new Date();
+  selectedDate.setHours(0,0,0,0); // the day currently shown on the board
+
+  function cryptoId(){ return 'id-' + Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
+  function persist(){ save(STORAGE_KEY, tasks); save(ARCHIVE_KEY, archive); }
+  function persistSettings(){ save(SETTINGS_KEY, settings); }
+  function formatDate(ts){ return new Date(ts).toLocaleDateString('ru-RU', { day:'numeric', month:'short' }); }
+
+  const boardEl = document.getElementById('board');
+  const archiveListEl = document.getElementById('archive-list');
+  const archiveCountEl = document.getElementById('archive-count');
+  const overlay = document.getElementById('overlay');
+  const sidebar = document.getElementById('sidebar');
+
+  const dayLabelEl = document.getElementById('today-label');
+
+  function sameDay(a, b){
+    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  }
+  function dateKey(d){
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+
+  function updateDayLabel(){
+    const isToday = sameDay(selectedDate, new Date());
+    let label = selectedDate.toLocaleDateString('ru-RU', { weekday:'long', day:'numeric', month:'long' });
+    if(isToday) label += ' · сегодня';
+    dayLabelEl.textContent = label;
+  }
+
+  // ---------- view switching (board / calendar / settings) ----------
+  const navBoard = document.getElementById('nav-board');
+  const navCalendar = document.getElementById('nav-calendar');
+  const navSettings = document.getElementById('nav-settings');
+  const calendarView = document.getElementById('calendar-view');
+  const settingsView = document.getElementById('settings-view');
+  const archiveBtnHeader = document.getElementById('open-archive');
+
+  function setView(view){
+    boardEl.style.display = view === 'board' ? '' : 'none';
+    calendarView.style.display = view === 'calendar' ? '' : 'none';
+    settingsView.style.display = view === 'settings' ? '' : 'none';
+    archiveBtnHeader.style.display = view === 'settings' ? 'none' : '';
+    navBoard.classList.toggle('active', view === 'board');
+    navCalendar.classList.toggle('active', view === 'calendar');
+    navSettings.classList.toggle('active', view === 'settings');
+    if(view === 'calendar') renderCalendar();
+  }
+  navBoard.addEventListener('click', () => setView('board'));
+  navCalendar.addEventListener('click', () => setView('calendar'));
+  navSettings.addEventListener('click', () => setView('settings'));
+
+  function selectDate(date){
+    selectedDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    renderBoardForSelectedDate();
+    updateDayLabel();
+    setView('board');
+  }
+
+  const ICONS = {
+    trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6h16Z"/></svg>',
+    archive: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8M10 12h4"/></svg>',
+    restore: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg>',
+    plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>',
+    edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+    chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+  };
+
+  function bump(el){ el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
+
+  // ---------- calendar view ----------
+  const calGridEl = document.getElementById('calendar-grid');
+  const calTitleEl = document.getElementById('cal-title');
+  let calendarDate = new Date();
+  calendarDate.setDate(1);
+
+  function renderCalendar(){
+    calTitleEl.textContent = calendarDate.toLocaleDateString('ru-RU', { month:'long', year:'numeric' });
+
+    const year = calendarDate.getFullYear();
+    const month = calendarDate.getMonth();
+    const firstOfMonth = new Date(year, month, 1);
+    // Monday-first grid offset
+    const startOffset = (firstOfMonth.getDay() + 6) % 7;
+    const gridStart = new Date(year, month, 1 - startOffset);
+    const today = new Date();
+
+    calGridEl.innerHTML = '';
+    for(let i = 0; i < 42; i++){
+      const day = new Date(gridStart);
+      day.setDate(gridStart.getDate() + i);
+
+      const dayTasks = tasks.filter(t => sameDay(new Date(t.created), day));
+
+      const cell = document.createElement('div');
+      cell.className = 'calendar-day';
+      if(day.getMonth() !== month) cell.classList.add('other-month');
+      if(sameDay(day, today)) cell.classList.add('today');
+      if(sameDay(day, selectedDate)) cell.classList.add('selected');
+
+      const num = document.createElement('div');
+      num.className = 'calendar-day-num';
+      num.textContent = day.getDate();
+      cell.appendChild(num);
+
+      if(dayTasks.length){
+        const list = document.createElement('div');
+        list.className = 'calendar-day-tasks';
+        const shown = dayTasks.slice(0, 3);
+        shown.forEach(t => {
+          const chip = document.createElement('div');
+          chip.className = 'calendar-task-chip ' + t.status;
+          chip.textContent = t.text;
+          chip.title = t.text;
+          list.appendChild(chip);
+        });
+        if(dayTasks.length > shown.length){
+          const more = document.createElement('div');
+          more.className = 'calendar-more';
+          more.textContent = '+' + (dayTasks.length - shown.length);
+          list.appendChild(more);
+        }
+        cell.appendChild(list);
+      }
+
+      cell.addEventListener('click', () => selectDate(day));
+
+      calGridEl.appendChild(cell);
+    }
+  }
+
+  document.getElementById('cal-prev').addEventListener('click', () => {
+    calendarDate.setMonth(calendarDate.getMonth() - 1);
+    renderCalendar();
+  });
+  document.getElementById('cal-next').addEventListener('click', () => {
+    calendarDate.setMonth(calendarDate.getMonth() + 1);
+    renderCalendar();
+  });
+  document.getElementById('cal-today').addEventListener('click', () => {
+    calendarDate = new Date();
+    calendarDate.setDate(1);
+    selectDate(new Date());
+  });
+
+  function refreshCalendarIfVisible(){
+    if(calendarView.style.display !== 'none') renderCalendar();
+  }
+
+  // ---------- global tag registry (so tags persist & are searchable) ----------
+  const TAGS_KEY = 'planner.tags.v1';
+  let tagRegistry = load(TAGS_KEY, []); // array of tag name strings, in creation order
+  function persistTags(){ save(TAGS_KEY, tagRegistry); }
+  function ensureTagRegistered(name){
+    if(!tagRegistry.includes(name)){
+      tagRegistry.push(name);
+      persistTags();
+    }
+  }
+  // seed registry with any tags already present on tasks/archive (e.g. first run demo data)
+  [...tasks, ...archive].forEach(t => (t.tags || []).forEach(ensureTagRegistered));
+
+  // ---------- note detail bottom sheet ----------
+  const sheetOverlay = document.getElementById('sheet-overlay');
+  const noteSheet = document.getElementById('note-sheet');
+  const sheetTitleFloat = document.getElementById('sheet-title-float');
+  const sheetTitleEl = document.getElementById('sheet-title');
+  const sheetDateEl = document.getElementById('sheet-date');
+  const sheetStatusEl = document.getElementById('sheet-status');
+  const sheetTextarea = document.getElementById('sheet-textarea');
+  const sheetTagEditor = document.getElementById('sheet-tag-editor');
+  const tagAddBtn = document.getElementById('tag-add-btn');
+  const tagPicker = document.getElementById('tag-picker');
+  const tagPickerSearch = document.getElementById('tag-picker-search');
+  const tagPickerList = document.getElementById('tag-picker-list');
+  const sheetSaveBtn = document.getElementById('sheet-save');
+  const sheetDeleteBtn = document.getElementById('sheet-delete');
+  const sheetCloseBtn = document.getElementById('sheet-close');
+  let activeSheetTaskId = null;
+
+  const STATUS_LABEL = { planned:'в планах', progress:'в процессе', done:'выполнено' };
+
+  function positionSheetTitle(){
+    const rect = noteSheet.getBoundingClientRect();
+    sheetTitleFloat.style.bottom = (window.innerHeight - rect.top + 14) + 'px';
+  }
+
+  function renderSheetTagEditor(task){
+    // remove existing pills, keep the add button + picker
+    Array.from(sheetTagEditor.querySelectorAll('.tag-pill')).forEach(p => p.remove());
+    const colorVar = `var(${COLUMN_COLOR_VAR[task.status] || '--planned'})`;
+    (task.tags || []).forEach((tag, idx) => {
+      const pill = document.createElement('span');
+      pill.className = 'tag-pill';
+      pill.style.color = colorVar;
+      pill.innerHTML = `<span class="tag-dot"></span><span class="tag-label" style="color:inherit"></span>`;
+      pill.querySelector('.tag-label').textContent = tag;
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'tag-remove';
+      removeBtn.type = 'button';
+      removeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+      removeBtn.addEventListener('click', () => {
+        task.tags.splice(idx, 1);
+        persist();
+        renderSheetTagEditor(task);
+        refreshOpenCardTags(task);
+      });
+      pill.appendChild(removeBtn);
+      sheetTagEditor.insertBefore(pill, tagAddBtn);
+    });
+    positionSheetTitle();
+  }
+
+  function refreshOpenCardTags(task){
+    const card = cardNodes.get(task.id);
+    if(card) renderTagPills(card.querySelector('.card-tags'), task, 3);
+  }
+
+  // --- tag picker popover: search existing tags, create new, assign ---
+  function closeTagPicker(){
+    tagPicker.classList.remove('open');
+    tagPickerSearch.value = '';
+  }
+  function renderTagPickerList(){
+    const query = tagPickerSearch.value.trim().toLowerCase();
+    const task = tasks.find(t => t.id === activeSheetTaskId);
+    if(!task) return;
+    if(!task.tags) task.tags = [];
+    tagPickerList.innerHTML = '';
+
+    const available = tagRegistry.filter(t => !task.tags.includes(t));
+    const filtered = query ? available.filter(t => t.toLowerCase().includes(query)) : available;
+    const exactExists = tagRegistry.some(t => t.toLowerCase() === query);
+
+    function addTagToTask(name){
+      if(!task.tags.includes(name)) task.tags.push(name);
+      ensureTagRegistered(name);
+      persist();
+      renderSheetTagEditor(task);
+      refreshOpenCardTags(task);
+      closeTagPicker();
+    }
+
+    if(query && !exactExists){
+      const createBtn = document.createElement('button');
+      createBtn.className = 'tag-picker-item tp-create';
+      createBtn.type = 'button';
+      createBtn.innerHTML = `<span class="tp-dot"></span><span>Создать «${query}»</span>`;
+      createBtn.addEventListener('click', () => addTagToTask(query));
+      tagPickerList.appendChild(createBtn);
+    }
+
+    if(filtered.length === 0 && (!query || exactExists)){
+      if(filtered.length === 0 && !(query && !exactExists)){
+        const empty = document.createElement('div');
+        empty.className = 'tag-picker-empty';
+        empty.textContent = tagRegistry.length === 0 ? 'Пока нет меток' : 'Ничего не найдено';
+        tagPickerList.appendChild(empty);
+      }
+    }
+
+    const colorVar = `var(${COLUMN_COLOR_VAR[task.status] || '--planned'})`;
+    filtered.forEach(name => {
+      const item = document.createElement('button');
+      item.className = 'tag-picker-item';
+      item.type = 'button';
+      item.innerHTML = `<span class="tp-dot" style="background:${colorVar}"></span><span></span>`;
+      item.querySelector('span:last-child').textContent = name;
+      item.addEventListener('click', () => addTagToTask(name));
+      tagPickerList.appendChild(item);
+    });
+  }
+  tagAddBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    const willOpen = !tagPicker.classList.contains('open');
+    closeTagPicker();
+    if(willOpen){
+      tagPicker.classList.add('open');
+      renderTagPickerList();
+      setTimeout(() => tagPickerSearch.focus(), 50);
+    }
+  });
+  tagPickerSearch.addEventListener('input', renderTagPickerList);
+  tagPickerSearch.addEventListener('keydown', e => {
+    if(e.key === 'Escape'){ e.stopPropagation(); closeTagPicker(); }
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      const first = tagPickerList.querySelector('.tag-picker-item');
+      if(first) first.click();
+    }
+  });
+  document.addEventListener('click', e => {
+    if(tagPicker.classList.contains('open') && !e.target.closest('.note-sheet-tag-editor')) closeTagPicker();
+  });
+
+  function openNoteSheet(taskId){
+    const task = tasks.find(t => t.id === taskId);
+    if(!task) return;
+    activeSheetTaskId = taskId;
+    sheetTitleEl.textContent = task.text;
+    sheetDateEl.textContent = new Date(task.created).toLocaleDateString('ru-RU', { weekday:'long', day:'numeric', month:'long' });
+    sheetStatusEl.textContent = STATUS_LABEL[task.status] || '';
+    sheetStatusEl.style.color = `var(${COLUMN_COLOR_VAR[task.status] || '--planned'})`;
+    sheetTextarea.value = task.details || '';
+    if(!task.tags) task.tags = [];
+    renderSheetTagEditor(task);
+    closeTagPicker();
+    sheetOverlay.classList.add('open');
+    document.body.style.overflow = 'hidden';
+    requestAnimationFrame(positionSheetTitle);
+  }
+  function closeNoteSheet(){
+    sheetOverlay.classList.remove('open');
+    document.body.style.overflow = '';
+    activeSheetTaskId = null;
+    closeTagPicker();
+  }
+  function saveSheet(){
+    const task = tasks.find(t => t.id === activeSheetTaskId);
+    if(!task) return;
+    task.details = sheetTextarea.value.trim();
+    persist();
+    showToast('Сохранено');
+  }
+  function deleteSheetTask(){
+    if(!activeSheetTaskId) return;
+    if(settings.confirmDelete && !window.confirm('Удалить эту задачу?')){ return; }
+    const id = activeSheetTaskId;
+    closeNoteSheet();
+    deleteTask(id);
+  }
+
+  sheetCloseBtn.addEventListener('click', closeNoteSheet);
+  sheetOverlay.addEventListener('click', e => { if(e.target === sheetOverlay) closeNoteSheet(); });
+  sheetSaveBtn.addEventListener('click', saveSheet);
+  sheetDeleteBtn.addEventListener('click', deleteSheetTask);
+  document.addEventListener('keydown', e => {
+    if(e.key === 'Escape' && sheetOverlay.classList.contains('open') && !tagPicker.classList.contains('open')) closeNoteSheet();
+  });
+  window.addEventListener('resize', () => { if(sheetOverlay.classList.contains('open')) positionSheetTitle(); });
+
+  // ---------- DOM caches, built once ----------
+  const zones = {};   // status -> drop-zone element
+  const counts = {};  // status -> count badge element
+  const dots = {};    // status -> glowing dot element
+  const cardNodes = new Map(); // task id -> card element
+
+  function buildSkeleton(){
+    boardEl.innerHTML = '';
+    COLUMNS.forEach(col => {
+      const colEl = document.createElement('div');
+      colEl.className = 'column';
+      colEl.dataset.status = col.key;
+      colEl.innerHTML = `
+        <div class="column-header">
+          <span class="dot"></span>
+          <span class="label">${col.label}</span>
+          <span class="count">0</span>
+        </div>
+        <div class="drop-zone" data-status="${col.key}"></div>
+        <div class="add-row">
+          <button class="add-toggle" type="button">${ICONS.plus} Добавить задачу</button>
+          <div class="add-form">
+            <div class="add-form-inner">
+              <textarea placeholder="Что нужно сделать?" rows="2"></textarea>
+              <div class="add-form-actions">
+                <button class="btn btn-cancel" type="button">Отмена</button>
+                <button class="btn btn-save" type="button">Сохранить</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      zones[col.key] = colEl.querySelector('.drop-zone');
+      counts[col.key] = colEl.querySelector('.count');
+      dots[col.key] = colEl.querySelector('.dot');
+
+      const dropZone = zones[col.key];
+      dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+      dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+      dropZone.addEventListener('drop', e => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+        const id = e.dataTransfer.getData('text/plain');
+        moveTask(id, col.key);
+      });
+
+      const toggleBtn = colEl.querySelector('.add-toggle');
+      const form = colEl.querySelector('.add-form');
+      const textarea = form.querySelector('textarea');
+      const saveBtn = form.querySelector('.btn-save');
+      const cancelBtn = form.querySelector('.btn-cancel');
+
+      toggleBtn.addEventListener('click', () => {
+        form.classList.add('open');
+        toggleBtn.style.display = 'none';
+        setTimeout(() => textarea.focus(), 200);
+      });
+      function closeForm(){
+        form.classList.remove('open');
+        toggleBtn.style.display = 'flex';
+        textarea.value = '';
+      }
+      cancelBtn.addEventListener('click', closeForm);
+      function submitForm(){
+        const value = textarea.value.trim();
+        if(!value){ closeForm(); return; }
+        const now = new Date();
+        const created = new Date(
+          selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(),
+          now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds()
+        ).getTime();
+        const task = { id: cryptoId(), text: value, status: col.key, created, tags: [] };
+        tasks.push(task);
+        persist();
+        addCardToDOM(task, true);
+        closeForm();
+      }
+      saveBtn.addEventListener('click', submitForm);
+      textarea.addEventListener('keydown', e => {
+        if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); submitForm(); }
+        if(e.key === 'Escape'){ closeForm(); }
+      });
+
+      boardEl.appendChild(colEl);
+    });
+  }
+
+  function refreshEmptyState(status){
+    const zone = zones[status];
+    const hasCards = zone.querySelector('.card') !== null;
+    let emptyEl = zone.querySelector('.empty-state');
+    if(!hasCards && !emptyEl){
+      emptyEl = document.createElement('div');
+      emptyEl.className = 'empty-state';
+      emptyEl.textContent = status === 'done' ? 'Пока ничего не выполнено' : 'Пусто — добавьте первую задачу';
+      zone.appendChild(emptyEl);
+    } else if(hasCards && emptyEl){
+      emptyEl.remove();
+    }
+    if(dots[status]) dots[status].classList.toggle('dim', !hasCards);
+  }
+
+  function updateCount(status){
+    const n = tasks.filter(t => t.status === status && sameDay(new Date(t.created), selectedDate)).length;
+    const el = counts[status];
+    if(el.textContent !== String(n)){ el.textContent = n; bump(el); }
+  }
+
+  const COLUMN_COLOR_VAR = { planned:'--planned', progress:'--progress', done:'--done' };
+
+  function renderTagPills(container, task, limit){
+    container.innerHTML = '';
+    const tags = task.tags || [];
+    if(tags.length === 0){ container.style.display = 'none'; return; }
+    container.style.display = '';
+    const colorVar = `var(${COLUMN_COLOR_VAR[task.status] || '--planned'})`;
+    const shown = limit ? tags.slice(0, limit) : tags;
+    shown.forEach(tag => {
+      const pill = document.createElement('span');
+      pill.className = 'tag-pill';
+      pill.style.color = colorVar;
+      pill.innerHTML = `<span class="tag-dot"></span>`;
+      pill.appendChild(document.createTextNode(tag));
+      container.appendChild(pill);
+    });
+    if(limit && tags.length > limit){
+      const more = document.createElement('span');
+      more.className = 'tag-pill more';
+      more.textContent = '+' + (tags.length - limit);
+      container.appendChild(more);
+    }
+  }
+
+  function refreshCardActions(card, task){
+    const actions = card.querySelector('.card-actions');
+    const showArchive = task.status === 'done';
+    const hasArchiveBtn = !!actions.querySelector('.archive-task');
+    if(showArchive && !hasArchiveBtn){
+      const btn = document.createElement('button');
+      btn.className = 'icon-btn archive-task';
+      btn.title = 'В архив';
+      btn.innerHTML = ICONS.archive;
+      btn.addEventListener('click', () => archiveTask(task.id));
+      actions.insertBefore(btn, actions.firstChild);
+    } else if(!showArchive && hasArchiveBtn){
+      actions.querySelector('.archive-task').remove();
+    }
+  }
+
+  function createCardElement(task){
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.draggable = true;
+    card.dataset.id = task.id;
+    card.innerHTML = `
+      <div class="card-title"></div>
+      <div class="card-tags"></div>
+      <div class="card-meta">
+        <span class="card-date">${formatDate(task.created)}</span>
+        <div class="card-actions">
+          <button class="icon-btn danger delete-task" title="Удалить">${ICONS.trash}</button>
+        </div>
+      </div>
+    `;
+    const titleEl = card.querySelector('.card-title');
+    titleEl.textContent = task.text;
+    renderTagPills(card.querySelector('.card-tags'), task, 3);
+
+    card.addEventListener('dragstart', e => {
+      card.classList.add('dragging');
+      e.dataTransfer.setData('text/plain', task.id);
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    card.addEventListener('dragend', () => card.classList.remove('dragging'));
+    card.querySelector('.delete-task').addEventListener('click', e => { e.stopPropagation(); deleteTask(task.id); });
+
+    card.addEventListener('click', e => {
+      if(e.target.closest('.card-actions')) return;
+      if(!settings.expandOnClick) return;
+      openNoteSheet(task.id);
+    });
+
+    refreshCardActions(card, task);
+    return card;
+  }
+
+  function addCardToDOM(task, animate){
+    const belongsToSelectedDay = sameDay(new Date(task.created), selectedDate);
+    if(belongsToSelectedDay){
+      const card = createCardElement(task);
+      if(animate){
+        card.classList.add('enter');
+        card.addEventListener('animationend', () => card.classList.remove('enter'), { once:true });
+      }
+      zones[task.status].appendChild(card);
+      cardNodes.set(task.id, card);
+      refreshEmptyState(task.status);
+      updateCount(task.status);
+      refreshCalendarIfVisible();
+      return card;
+    }
+    // task created for a different day than the one currently shown — don't mount it, just keep counts/calendar honest
+    refreshEmptyState(task.status);
+    updateCount(task.status);
+    refreshCalendarIfVisible();
+    return null;
+  }
+
+  function renderBoardForSelectedDate(){
+    cardNodes.clear();
+    COLUMNS.forEach(col => { zones[col.key].innerHTML = ''; });
+    COLUMNS.forEach(col => {
+      const colTasks = tasks.filter(t => t.status === col.key && sameDay(new Date(t.created), selectedDate));
+      if(colTasks.length === 0){
+        refreshEmptyState(col.key);
+      } else {
+        colTasks.forEach((task, i) => {
+          const card = addCardToDOM(task, true);
+          if(card) card.style.animationDelay = (i * 40) + 'ms';
+        });
+      }
+      updateCount(col.key);
+    });
+  }
+
+  function moveTask(id, newStatus){
+    const task = tasks.find(t => t.id === id);
+    const card = cardNodes.get(id);
+    if(!task || !card || task.status === newStatus) return;
+    const oldStatus = task.status;
+    task.status = newStatus;
+    persist();
+
+    zones[newStatus].appendChild(card);
+    refreshCardActions(card, task);
+
+    card.classList.remove('moved');
+    void card.offsetWidth;
+    card.classList.add('moved');
+
+    refreshEmptyState(oldStatus);
+    refreshEmptyState(newStatus);
+    updateCount(oldStatus);
+    updateCount(newStatus);
+  }
+
+  function deleteTask(id){
+    const task = tasks.find(t => t.id === id);
+    const card = cardNodes.get(id);
+    if(!task || !card) return;
+    if(settings.confirmDelete && !window.confirm('Удалить эту задачу?')) return;
+    const status = task.status;
+    card.classList.add('removing');
+    setTimeout(() => {
+      card.remove();
+      cardNodes.delete(id);
+      tasks = tasks.filter(t => t.id !== id);
+      persist();
+      updateCount(status);
+      refreshEmptyState(status);
+      refreshCalendarIfVisible();
+    }, 220);
+  }
+
+  function archiveTask(id){
+    const task = tasks.find(t => t.id === id);
+    const card = cardNodes.get(id);
+    if(!task || !card) return;
+    card.classList.add('archiving');
+    setTimeout(() => {
+      card.remove();
+      cardNodes.delete(id);
+      tasks = tasks.filter(t => t.id !== id);
+      archive.unshift({ ...task, archivedAt: Date.now() });
+      persist();
+      updateCount('done');
+      refreshEmptyState('done');
+      setArchiveCount();
+      if(overlay.classList.contains('open')) addArchiveItemToDOM(archive[0], true, true);
+      refreshCalendarIfVisible();
+    }, 280);
+  }
+
+  function setArchiveCount(){
+    if(archiveCountEl.textContent !== String(archive.length)){
+      archiveCountEl.textContent = archive.length;
+      bump(archiveCountEl);
+    }
+  }
+
+  function addArchiveItemToDOM(task, animate, prepend){
+    const emptyMsg = archiveListEl.querySelector('.archive-empty');
+    if(emptyMsg) emptyMsg.remove();
+
+    const item = document.createElement('div');
+    item.className = 'archive-item';
+    item.dataset.id = task.id;
+    item.innerHTML = `
+      <div class="card-text"></div>
+      <div class="card-meta">
+        <span class="card-date">${formatDate(task.archivedAt)}</span>
+        <div class="card-actions">
+          <button class="icon-btn restore-task" title="Вернуть на доску">${ICONS.restore}</button>
+          <button class="icon-btn danger delete-archived" title="Удалить навсегда">${ICONS.trash}</button>
+        </div>
+      </div>
+    `;
+    item.querySelector('.card-text').textContent = task.text;
+
+    item.querySelector('.restore-task').addEventListener('click', () => {
+      item.classList.add('removing');
+      setTimeout(() => {
+        item.remove();
+        archive = archive.filter(t => t.id !== task.id);
+        persist();
+        setArchiveCount();
+        if(archive.length === 0) showArchiveEmpty();
+        const restored = { id: task.id, text: task.text, status: 'done', created: task.created };
+        tasks.push(restored);
+        persist();
+        addCardToDOM(restored, true);
+      }, 200);
+    });
+    item.querySelector('.delete-archived').addEventListener('click', () => {
+      item.classList.add('removing');
+      setTimeout(() => {
+        item.remove();
+        archive = archive.filter(t => t.id !== task.id);
+        persist();
+        setArchiveCount();
+        if(archive.length === 0) showArchiveEmpty();
+      }, 200);
+    });
+
+    if(prepend && archiveListEl.firstChild) archiveListEl.insertBefore(item, archiveListEl.firstChild);
+    else archiveListEl.appendChild(item);
+
+    if(animate){
+      item.classList.add('enter');
+      item.addEventListener('animationend', () => item.classList.remove('enter'), { once:true });
+    }
+  }
+
+  function showArchiveEmpty(){
+    archiveListEl.innerHTML = '<div class="archive-empty">Архив пуст</div>';
+  }
+
+  function openArchivePanel(){
+    archiveListEl.innerHTML = '';
+    if(archive.length === 0){
+      showArchiveEmpty();
+    } else {
+      archive.forEach(task => addArchiveItemToDOM(task, false, false));
+    }
+    overlay.classList.add('open');
+  }
+
+  document.getElementById('open-archive').addEventListener('click', openArchivePanel);
+  document.getElementById('close-archive').addEventListener('click', () => overlay.classList.remove('open'));
+  overlay.addEventListener('click', e => { if(e.target === overlay) overlay.classList.remove('open'); });
+
+  // ---------- settings ----------
+  const toastEl = document.getElementById('settings-toast');
+  let toastTimer = null;
+  function showToast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2200);
+  }
+
+  function hexToRgb(hex){
+    const m = hex.replace('#','').match(/.{1,2}/g);
+    return m.map(h => parseInt(h,16)).join(',');
+  }
+
+  function applySettings(){
+    document.documentElement.style.setProperty('--planned', settings.accent);
+    document.body.classList.toggle('density-compact', settings.density === 'compact');
+    document.body.style.setProperty('--anim-scale', settings.animations ? '1' : '0');
+    if(!settings.animations){
+      document.documentElement.style.setProperty('--ease-spring', 'linear');
+    }
+    document.body.classList.toggle('no-anim', !settings.animations);
+  }
+
+  function initSettingsUI(){
+    // accent swatches
+    const swatches = document.querySelectorAll('.accent-swatch');
+    swatches.forEach(sw => {
+      sw.classList.toggle('active', sw.dataset.accent.toLowerCase() === settings.accent.toLowerCase());
+      sw.addEventListener('click', () => {
+        settings.accent = sw.dataset.accent;
+        persistSettings();
+        swatches.forEach(s => s.classList.remove('active'));
+        sw.classList.add('active');
+        applySettings();
+        showToast('Акцентный цвет обновлён');
+      });
+    });
+
+    const densitySelect = document.getElementById('density-select');
+    densitySelect.value = settings.density;
+    densitySelect.addEventListener('change', () => {
+      settings.density = densitySelect.value;
+      persistSettings();
+      applySettings();
+    });
+
+    const animToggle = document.getElementById('animations-toggle');
+    animToggle.checked = settings.animations;
+    animToggle.addEventListener('change', () => {
+      settings.animations = animToggle.checked;
+      persistSettings();
+      applySettings();
+    });
+
+    const expandToggle = document.getElementById('expand-toggle');
+    expandToggle.checked = settings.expandOnClick;
+    expandToggle.addEventListener('change', () => {
+      settings.expandOnClick = expandToggle.checked;
+      persistSettings();
+    });
+
+    const confirmDeleteToggle = document.getElementById('confirm-delete-toggle');
+    confirmDeleteToggle.checked = settings.confirmDelete;
+    confirmDeleteToggle.addEventListener('change', () => {
+      settings.confirmDelete = confirmDeleteToggle.checked;
+      persistSettings();
+    });
+
+    const autoArchiveSelect = document.getElementById('autoarchive-select');
+    autoArchiveSelect.value = String(settings.autoArchiveDays || 0);
+    autoArchiveSelect.addEventListener('change', () => {
+      settings.autoArchiveDays = Number(autoArchiveSelect.value);
+      persistSettings();
+      runAutoArchive();
+    });
+
+    document.getElementById('export-btn').addEventListener('click', () => {
+      const payload = { tasks, archive, settings, exportedAt: new Date().toISOString() };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'planner-export-' + dateKey(new Date()) + '.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast('Экспорт сохранён');
+    });
+
+    const importFile = document.getElementById('import-file');
+    document.getElementById('import-btn').addEventListener('click', () => importFile.click());
+    importFile.addEventListener('change', () => {
+      const file = importFile.files[0];
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try{
+          const data = JSON.parse(reader.result);
+          if(Array.isArray(data.tasks)) tasks = data.tasks;
+          if(Array.isArray(data.archive)) archive = data.archive;
+          if(data.settings) settings = Object.assign(settings, data.settings);
+          persist();
+          persistSettings();
+          renderBoardForSelectedDate();
+          setArchiveCount();
+          applySettings();
+          showToast('Импорт выполнен');
+        } catch(e){
+          showToast('Не удалось прочитать файл');
+        }
+        importFile.value = '';
+      };
+      reader.readAsText(file);
+    });
+
+    document.getElementById('clear-archive-btn').addEventListener('click', () => {
+      if(archive.length === 0){ showToast('Архив уже пуст'); return; }
+      if(!window.confirm('Удалить всё содержимое архива без возможности восстановления?')) return;
+      archive = [];
+      persist();
+      setArchiveCount();
+      if(overlay.classList.contains('open')) showArchiveEmpty();
+      showToast('Архив очищен');
+    });
+
+    document.getElementById('reset-all-btn').addEventListener('click', () => {
+      if(!window.confirm('Это удалит все задачи, архив и настройки без возможности восстановления. Продолжить?')) return;
+      tasks = [];
+      archive = [];
+      settings = { accent:'#A78BFA', density:'comfortable', animations:true, expandOnClick:true, confirmDelete:false, autoArchiveDays:0 };
+      persist();
+      persistSettings();
+      renderBoardForSelectedDate();
+      setArchiveCount();
+      applySettings();
+      densitySelect.value = settings.density;
+      animToggle.checked = settings.animations;
+      expandToggle.checked = settings.expandOnClick;
+      confirmDeleteToggle.checked = settings.confirmDelete;
+      autoArchiveSelect.value = '0';
+      swatches.forEach(s => s.classList.toggle('active', s.dataset.accent.toLowerCase() === settings.accent.toLowerCase()));
+      showToast('Всё сброшено');
+    });
+  }
+
+  function runAutoArchive(){
+    const days = settings.autoArchiveDays;
+    if(!days) return;
+    const cutoff = Date.now() - days * 86400000;
+    const toMove = tasks.filter(t => t.status === 'done' && t.created < cutoff);
+    if(toMove.length === 0) return;
+    toMove.forEach(task => {
+      archive.unshift({ ...task, archivedAt: Date.now() });
+    });
+    tasks = tasks.filter(t => !(t.status === 'done' && t.created < cutoff));
+    persist();
+    renderBoardForSelectedDate();
+    setArchiveCount();
+  }
+
+  // ---------- initial render ----------
+  buildSkeleton();
+  renderBoardForSelectedDate();
+  updateDayLabel();
+  setArchiveCount();
+  applySettings();
+  initSettingsUI();
+  runAutoArchive();
+})();
+</script>
+</body>
+</html>
